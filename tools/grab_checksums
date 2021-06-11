@@ -36,6 +36,9 @@ do
     if [ "$BACKPORTS"x != ""x ] ; then
 	LOCATIONS="$LOCATIONS $MIRROR/dists/$CODENAME-backports/"
     fi
+    if [ "$UNRELEASED" = 1 ] ; then
+	LOCATIONS="$LOCATIONS $MIRROR/dists/unreleased/"
+    fi
     echo "Looking in $LOCATIONS"
 
     for LOCATION in $LOCATIONS; do
@@ -47,7 +50,7 @@ do
 
     case $ARCH in
         source)
-            FILES=`find $LOCATIONS -name Sources.gz -o -name Sources.xz`
+            FILES=`find $LOCATIONS -follow -name Sources.gz -o -name Sources.xz`
             echo "Using $CHECKSUM sums from Sources files:"
             echo $FILES
             $BASEDIR/tools/catz $FILES | \
@@ -82,7 +85,7 @@ do
                 }' | sort | uniq >> $OUT
             ;;
         *)
-            FILES=`find $LOCATIONS -name Packages.gz \
+            FILES=`find $LOCATIONS -follow -name Packages.gz \
                    -o -name Packages.xz | grep binary-$ARCH`
             echo "Using $CHECKSUM sums from Packages files:"
             echo $FILES
