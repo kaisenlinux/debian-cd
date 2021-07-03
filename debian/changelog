@@ -1,30 +1,3 @@
-debian-cd (3.1.34+kaisen1) kaisen-packages; urgency=medium
-
-  * Rebuild to import the new version
-
- -- Kevin Chevreuil - Kaisen <kaisen@kaisenlinux.org>  Fri, 11 Jun 2021 16:41:27 +0200
-
-debian-cd (3.1.34) unstable; urgency=medium
-
-  [ Wolfgang Schweer ]
-  * data/bullseye: Update Debian Edu installer logo and syslinux splash image
-    from src:debian-edu-artwork 2.11.5-1.
-  * tools/boot/*/boot-x86: Prevent custom splash images from being modified.
-    The related code seems to have been useful a long time ago (the need to use
-    an RLE file and to reduce the number of colours to 16 has been dropped as of
-    syslinux version 3.62). So replace obsolete code with a simple cp command.
-  * debian/control: Drop Recommends: on netpbm and syslinux-utils. These are no
-    longer needed now that custom splash images are used unmodified.
-
-  [ Petter Reinholdtse ]
-  * Include eatmydata deb for d-i to use offline. Closes: #986772
-
-  [ Steve McIntyre ]
-  * Shorten "ppc64el" to "p64el" in the volume ID. The bullseye d-i
-    RC1 build failed as the volume ID was too long.
-
- -- Holger Levsen <holger@debian.org>  Tue, 20 Apr 2021 01:03:35 +0200
-
 debian-cd (3.1.33+kaisen1) kaisen-testing; urgency=medium
 
   * Rebuild to add kaisen-rolling symlinks
