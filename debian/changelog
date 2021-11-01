@@ -1,3 +1,9 @@
+debian-cd (3.1.35+kaisen2) kaisen-packages; urgency=medium
+
+  * Change VOLID and DISKINFO variables values in tools/start_new_disc
+
+ -- Kevin Chevreuil - Kaisen <kaisen@kaisenlinux.org>  Mon, 01 Nov 2021 14:28:03 +0200
+
 debian-cd (3.1.35+kaisen1) kaisen-packages; urgency=medium
 
   * Import new upstream release
