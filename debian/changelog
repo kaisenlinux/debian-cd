@@ -1,3 +1,9 @@
+debian-cd (3.1.35+kaisen3) kaisen-packages; urgency=medium
+
+  * Add cryptsetup-initramfs in the tools/generate_di+k_list file
+
+ -- Kevin Chevreuil - Kaisen <kaisen@kaisenlinux.org>  Thu, 10 Mar 2022 16:21:36 +0200
+
 debian-cd (3.1.35+kaisen2) kaisen-packages; urgency=medium
 
   * Change VOLID and DISKINFO variables values in tools/start_new_disc
