@@ -402,7 +402,7 @@ if [ "$LOGOPNG" ] ; then
         cp $LOGOPNG $INITRDDIR/usr/share/graphics/logo_debian.png
         echo usr/share/graphics/logo_debian.png | \
             cpio -oA -H newc -F $GTKINITRD
-	gzip -9 $GTKINITRD
+	pigz -9nm $GTKINITRD
     )
     rm -rf $INITRDDIR
 fi
@@ -452,6 +452,8 @@ if [ -d boot$N/isolinux/grub ] && [ $BOOT_EFI -ne 0 ] ; then
     # Stuff the EFI boot files into a FAT filesystem, making it as
     # small as possible. We end up re-packing like this in case we're
     # making a multi-arch image
+
+    change_grub_cfg_uuid $CDDIR
 
     # First, work out how many blocks we need
     blocks=$(calculate_efi_image_size $CDDIR)
