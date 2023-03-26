@@ -134,6 +134,12 @@ if [ "$BACKPORTS"x != ""x ] ; then
     fi
 fi
 
+# Commodity link for tools which want local in dists/local/local ...
+if [ -n "$LOCAL" ]
+then
+    ln -sf $CODENAME $CDDIR/dists/local
+fi
+
 if [ ! -d $CDDIR/.disk ] ; then
     mkdir $CDDIR/.disk
 fi
@@ -176,7 +182,6 @@ if [ $DISKNUM = 1 ] ; then
     echo "  Adding .disk/base_components"
     echo "main" > $CDDIR/.disk/base_components
     if [ -n "$LOCAL" ] ; then
-        # This might be reverted by finish_disc in the end:
         echo "local" >> $CDDIR/.disk/base_components
     fi
 
@@ -338,7 +343,7 @@ cd $CDDIR
 
 SECTIONS="main"
 if [ "${NONFREE:-0}" != "0" -o "${EXTRANONFREE:-0}" != "0" ] ; then
-    SECTIONS="${SECTIONS} $NONFREE_COMPONENTS"
+    SECTIONS="${SECTIONS} non-free"
 fi
 if [ "${CONTRIB:-0}" != "0" ] ; then
     SECTIONS="${SECTIONS} contrib"

@@ -19,9 +19,7 @@ $text_out = "";
 
 my @components = qw(main);
 push @components, 'contrib' if $ENV{CONTRIB};
-if ($ENV{NONFREE}) {
-    push @components, split /\ /,$ENV{NONFREE_COMPONENTS};
-}
+push @components, 'non-free' if $ENV{NONFREE};
 push @components, 'local' if $ENV{LOCAL};
 
 if (!defined ($output)) {

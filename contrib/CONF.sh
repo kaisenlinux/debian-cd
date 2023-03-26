@@ -47,8 +47,8 @@ unset BASE_EXCLUDE      || true
 # Where I am (hoping I'm in the debian-cd dir)
 export BASEDIR=`pwd`
 
-# Building bookworm cd set ...
-export CODENAME=bookworm
+# Building bullseye cd set ...
+export CODENAME=bullseye
 
 if [ ! "$DI_CODENAME" ]
 then

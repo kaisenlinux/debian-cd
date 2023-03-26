@@ -45,11 +45,11 @@ options=" -q -o Dir::State::status=$APTTMP/$THIS_PKGSET/status \
 		  -o Acquire::Languages=none"
 
 sections=main
+if [ "${NONFREE:-0}" != "0" ] || [ "${EXTRANONFREE:-0}" != "0" ] || [ "${FORCE_FIRMWARE:-0}" != "0" ]; then
+	sections="$sections non-free"
+fi
 if [ "${CONTRIB:-0}" != "0" ]; then
 	sections="$sections contrib"
-fi
-if [ "${NONFREE:-0}" != "0" ] || [ "${EXTRANONFREE:-0}" != "0" ] || [ "${FORCE_FIRMWARE:-0}" != "0" ]; then
-	sections="$sections $NONFREE_COMPONENTS"
 fi
 
 # Check for the necessary dirs and files ...
@@ -89,18 +89,13 @@ if [ ! -e "$APTTMP/$THIS_PKGSET/apt/sources.list" ]; then
 
 	# Local packages ...
 	if [ -n "$LOCAL" ]; then
-		echo "$ADEB [trusted=yes] file:${LOCALDEBS:-$MIRROR} $CODENAME local" \
+		echo "$ADEB file:${LOCALDEBS:-$MIRROR} $CODENAME local" \
 			>> $APTTMP/$THIS_PKGSET/apt/sources.list
 	fi
 
 	# Security mirror ...
 	if [ -n "$SECURITY" ]; then
-		case $CODENAME in
-			stretch|buster) SEC=$CODENAME/updates;;
-			*)		SEC=$CODENAME-security;;
-		esac
-
-		echo "$ADEB file:${SECURITY:-$MIRROR} $SEC $sections" \
+		echo "$ADEB file:${SECURITY:-$MIRROR} $CODENAME/updates $sections" \
 		>> $APTTMP/$THIS_PKGSET/apt/sources.list
 	fi
 
@@ -121,7 +116,7 @@ if [ ! -e "$APTTMP/$THIS_PKGSET/apt/sources.list" ]; then
 				>> $APTTMP/$THIS_PKGSET/apt/sources.list
 		fi
 		if [ -n "$LOCAL" ] && [ -e "${LOCALDEBS:-$MIRROR}/dists/$DI_CODENAME/local/debian-installer" ]; then
-			echo "$ADEB [trusted=yes] file:${LOCALDEBS:-$MIRROR} $DI_CODENAME local/debian-installer" \
+			echo "$ADEB file:${LOCALDEBS:-$MIRROR} $DI_CODENAME local/debian-installer" \
 				>> $APTTMP/$THIS_PKGSET/apt/sources.list
 		fi
 	fi

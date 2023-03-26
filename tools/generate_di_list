@@ -75,9 +75,7 @@ my @common_excludes = read_exclude("exclude-udebs");
 my $mirror_path = "$ENV{MIRROR}/dists/$ENV{DI_CODENAME}";
 my @components = qw(main);
 push @components, 'contrib' if $ENV{CONTRIB};
-if ($ENV{NONFREE}) {
-    push @components, split /\ /,$ENV{NONFREE_COMPONENTS};
-}
+push @components, 'non-free' if $ENV{NONFREE};
 push @components, 'unreleased' if $ENV{UNRELEASED};
 push @components, 'local' if $ENV{LOCAL};
 

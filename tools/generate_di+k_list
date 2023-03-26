@@ -118,14 +118,12 @@ ca-certificates
 #endif
 
 #ifdef ARCH_i386
-iucode-tool
 initramfs-tools
 busybox
 grub-pc
 grub-efi
 grub-efi-ia32
 grub-efi-ia32-bin
-grub-efi-ia32-signed
 shim-signed
 laptop-detect
 libc6-i686
@@ -154,7 +152,6 @@ linux-headers-686-pae
 #endif
 
 #ifdef ARCH_amd64
-iucode-tool
 initramfs-tools
 busybox
 grub-pc
@@ -162,9 +159,6 @@ grub-efi
 grub-efi-amd64
 grub-efi-amd64-bin
 grub-efi-amd64-signed
-grub-efi-ia32
-grub-efi-ia32-bin
-grub-efi-ia32-signed
 shim-signed
 laptop-detect
 linux-image-amd64
