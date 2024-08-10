@@ -12,6 +12,7 @@ use File::Find;
 use File::Path qw(make_path remove_tree);
 use File::Basename;
 use Compress::Zlib;
+use File::Slurp;
 
 my %pkginfo;
 my ($basedir, $mirror, $tdir, $codename, $archlist, $mkisofs, $maxcds,
@@ -19,7 +20,7 @@ my ($basedir, $mirror, $tdir, $codename, $archlist, $mkisofs, $maxcds,
 my $mkisofs_base_opts = "";
 my $mkisofs_opts = "";
 my $mkisofs_dirs = "";
-my (@arches, @arches_nosrc, @overflowlist, @pkgs_added);
+my (@arches, @arches_nosrc, @overflowlist, @pkgs_added, @nonfree_components);
 my (@exclude_packages, @unexclude_packages, @excluded_package_list);
 my %firmware_package;
 my $current_checksum_type = "";
@@ -88,6 +89,7 @@ if ($maxisos < $maxcds) {
 }
 
 $extranonfree = read_env('EXTRANONFREE', 0);
+@nonfree_components = split /\ /, read_env('NONFREE_COMPONENTS', 'non-free');
 $nonfree = read_env('NONFREE', 0);
 $contrib = read_env('CONTRIB', 0);
 $use_local = read_env('LOCAL', 0);
@@ -265,7 +267,7 @@ while (defined (my $pkg = <INLIST>)) {
     if (should_exclude_package($pkg)) {
         push(@excluded_package_list, $pkg);
     } elsif (should_start_extra_nonfree($pkg)) {
-        print LOG "Starting on extra non-free CDs\n";
+        print LOG "Starting on extra non-free image(s)\n";
         finish_disc($cddir, "");
         # And reset, to start the next disc
         $size = 0;
@@ -417,7 +419,9 @@ sub load_all_descriptions {
 	    load_descriptions("contrib", $use_backports);
 	}
 	if ($nonfree || $extranonfree) {
-	    load_descriptions("non-free", $use_backports);
+	    foreach my $component (@nonfree_components) {
+		load_descriptions($component, $use_backports);
+	    }
 	}
 	if ($use_local) {
 	    load_descriptions("local", $use_backports);
@@ -490,12 +494,15 @@ sub should_start_extra_nonfree {
     my $pkg = shift;
     my ($arch, $component, $pkgname, $pkgsize) = split /:/, $pkg;
 
-	if ( ($component eq "non-free") && $extranonfree) {
+    if ($extranonfree) {
+	foreach my $nf_comp (@nonfree_components) {
+	    if ($component eq $nf_comp) {
 		$extranonfree = 0; # Flag that we don't need to start new next time!
 		return 1;
+	    }
 	}
-	
-	return 0;
+    }
+    return 0;
 }
 
 sub should_exclude_package {
@@ -656,13 +663,13 @@ sub recompress {
 	# Packages and Sources files; workaround for bug #402482
 	if ($filename =~ m/\/.*\/(Packages|Sources)$/o) {
 		system("rm -f $_.gz");
-		system("gzip -9c < $_ >$_.gz");
+		system("pigz -9nmc < $_ >$_.gz");
 	}
 	# Translation files need to be compressed in .gz format on CD?
 	if ($filename =~ m/\/.*\/i18n\/(Translation.*)$/o &&
 		! ($filename =~ m/\/.*\/i18n\/(Translation.*gz)$/o)) {
 		system("rm -f $_.gz");
-		system("gzip -9c < $_ >$_.gz");
+		system("pigz -9nmc < $_ >$_.gz");
 		system("rm -f $_");
 	}
 }	
@@ -890,6 +897,17 @@ sub finish_disc {
 	# having local packages.
 	if (-d "./dists/$codename/local") {
 		find (\&add_missing_Packages, "./dists/$codename/main/");
+	} else {
+		# Otherwise ensure not to pass --components=main,local to
+		# debootstrap:
+		my $base_components = ".disk/base_components";
+		if (-f $base_components) {
+			my @components = read_file($base_components);
+			if (grep { $_ eq "local\n" } @components) {
+				print "  Removing local from base_components (no such component under $codename)\n";
+				write_file($base_components, grep { $_ ne "local\n" } @components);
+			}
+		}
 	}
 
 	print "  Finishing off the Release file\n";
@@ -910,7 +928,11 @@ sub finish_disc {
 	print "  Finishing off md5sum.txt\n";
 	# Just md5 the bits we won't have seen already
 	open(MD5LIST, ">>md5sum.txt") or die "Failed to open md5sum.txt file: $!\n";
-	find (\&md5_files_for_md5sum, ("./.disk", "./dists", "./firmware/dep11"));
+	foreach my $dir ("./.disk", "./dists", "./firmware/dep11") {
+	    if (-d $dir) {
+		find (\&md5_files_for_md5sum, $dir);
+	    }
+	}
 	close(MD5LIST);
 
 	# And sort; it should make things faster for people checking
@@ -959,26 +981,32 @@ sub Packages_dir {
     my $section = shift;
     my $in_backports = shift;
 
-    my ($pdir, $dist);
+    my ($pdir, $component);
 
     if ($file =~ /\/main\//) {
-        $dist = "main";
+        $component = "main";
     } elsif ($file =~ /\/contrib\//) {
-        $dist = "contrib";
+        $component = "contrib";
     } elsif ($file =~ /\/non-free\//) {
-        $dist = "non-free";
+        $component = "non-free";
+    } elsif ($file =~ /\/non-free-firmware\//) {
+        $component = "non-free-firmware";
     } else {
-        $dist = "local";
+        $component = "local";
     }	
 
-    $pdir = "$dir/dists/$codename/$dist";
+    $pdir = "$dir/dists/$codename/$component";
     if ($in_backports) {
-	$pdir = "$dir/dists/$codename-backports/$dist";
+	$pdir = "$dir/dists/$codename-backports/$component";
     }	
     if ($section and $section eq "debian-installer") {
-        $pdir = "$dir/dists/$codename/$dist/debian-installer";
 	# Don't attempt to put d-i components into backports, as d-i
 	# won't look for them there.
+	#
+	# Also, merge local udebs into main, as d-i uses a single
+	# Packages file anyway:
+	my $dstcomponent = $component ne 'local' ? $component : 'main';
+	$pdir = "$dir/dists/$codename/$dstcomponent/debian-installer";
     }
     return $pdir;
 }
@@ -1171,7 +1199,7 @@ sub add_firmware_stuff {
     my $arch = shift;
     my $in_backports = shift;
     local $_ = shift;
-    my ($p, $file, $section, $dist, $dep11_dir);
+    my ($p, $file, $section, $component, $dep11_dir);
     my $blocks_added = 0;
     my @args = ("$basedir/tools/generate_firmware_patterns",
 		"--output-dir", "$dir/firmware/dep11");
@@ -1180,34 +1208,46 @@ sub add_firmware_stuff {
     m/^Section: (\S+)/m and $section = $1;
     m/^Filename: (\S+)/mi and $file = $1;
 
+    my $base_file = basename($file);
+
     if ($file =~ /\/main\//) {
-        $dist = "main";
+        $component = "main";
     } elsif ($file =~ /\/contrib\//) {
-        $dist = "contrib";
+        $component = "contrib";
     } elsif ($file =~ /\/non-free\//) {
-        $dist = "non-free";
+        $component = "non-free";
+    } elsif ($file =~ /\/non-free-firmware\//) {
+        $component = "non-free-firmware";
     } else {
-        $dist = "local";
+        $component = "local";
     }
 
-    $dep11_dir = "$mirror/dists/$codename/$dist/dep11";
+    $dep11_dir = "$mirror/dists/$codename/$component/dep11";
     if ($in_backports) {
-	$dep11_dir = "$mirror/dists/$codename-backports/$dist/dep11";
+	$dep11_dir = "$mirror/dists/$codename-backports/$component/dep11";
     }
 
-    msg_ap(0, "Symlink fw package $p into /firmware\n");
-    symlink("../$file", "$dir/firmware/" . basename($file));
-    msg_ap(0, "Symlink ../$file $dir/firmware/.\n");
     if (! -d "$dir/firmware") {
 	mkdir "$dir/firmware" or die "mkdir $dir/firmware failed $!\n";
 	mkdir "$dir/firmware/dep11" or die "mkdir $dir/firmware/dep11 failed $!\n";
 	$blocks_added += 2;
+
+	# In case anyone wonders about those files:
+	write_file("$dir/firmware/dep11/README.txt",
+		   "These files help Debian Installer detect helpful firmware packages (via hw-detect).\n")
+	    or die "unable to create $dir/firmware/dep11/README.txt";
+	$blocks_added += get_file_blocks("$dir/firmware/dep11/README.txt");
     }
+
+    msg_ap(0, "Link fw package $p into /firmware\n");
+    $blocks_added += good_link("$dir/firmware/../$file", "$dir/firmware/$base_file");
+    msg_ap(0, "Link ../$file $dir/firmware/.\n");
 
     # Cope with maybe having the patterns file already
     # (e.g. multi-arch), in which case we'll replace it here
     if (-f "$dir/firmware/dep11/$p.patterns") {
 	$blocks_added -= get_file_blocks("$dir/firmware/dep11/$p.patterns");
+	$blocks_added -= get_file_blocks("$dir/firmware/dep11/$p.component");
     }
 
     msg_ap(0, "(Maybe) generate fw pattern file $dir/firmware/dep11/$p.patterns\n");
@@ -1216,7 +1256,34 @@ sub add_firmware_stuff {
     system(@args) == 0 or die "generate_firmware_patterns failed: $?";
     if (-f "$dir/firmware/dep11/$p.patterns") {
 	$blocks_added += get_file_blocks("$dir/firmware/dep11/$p.patterns");
+	# Make sure apt-setup can be configured appropriately:
+	write_file("$dir/firmware/dep11/$p.component", $component)
+	    or die "unable to create $dir/firmware/dep11/$p.component";
+	$blocks_added += get_file_blocks("$dir/firmware/dep11/$p.component");
     }
+
+    # Find the current size of the firmware Contents file
+    my $contents_blocks_old = 0;
+    my $cont_file = "$dir/firmware/Contents-firmware";
+    if (-f "$cont_file") {
+	$contents_blocks_old = get_file_blocks("$cont_file");
+    }
+    # Add new contents stuff, and count it
+    open(OFILE, ">> $cont_file");
+    open(DPKGC, "dpkg --contents $dir/firmware/$base_file |")
+	or die "Can't find contents of $dir/firmware/$base_file: $!";
+    while (defined(my $line = <DPKGC>)) {
+	chomp $line;
+        # XXX: Keep in line with make-firmware-image!
+	if ($line =~ m,^[-|l]\S+\s+\S+\s+\d+\s+\S+\s+\S+\s+./(\S+/firmware/\S+),) {
+	    printf OFILE "%-55s %s %s\n", "/$1", $base_file, $component;
+	}
+    }
+    close DPKGC;
+    close OFILE;
+
+    my $contents_blocks_new = get_file_blocks($cont_file);
+    $blocks_added += $contents_blocks_new - $contents_blocks_old;
 
     return $blocks_added;
 }
@@ -1431,14 +1498,41 @@ sub remove_firmware_stuff {
     m/^Package: (\S+)/mi and $p = $1;
     m/^Filename: (\S+)/mi and $file = $1;
 
+    my $base_file = basename($file);
+
     msg_ap(0, "Remove symlink for fw package $p in /firmware\n");
-	unlink("$dir/firmware/" . basename($file));
+	unlink("$dir/firmware/$base_file");
 
     if (-f "$dir/firmware/dep11/$p.patterns") {
 	$blocks_removed += get_file_blocks("$dir/firmware/dep11/$p.patterns");
 	msg_ap(0, "Remove $dir/firmware/dep11/$p.patterns\n");
 	unlink("$dir/firmware/dep11/$p.patterns");
+
+	$blocks_removed += get_file_blocks("$dir/firmware/dep11/$p.component");
+	msg_ap(0, "Remove $dir/firmware/dep11/$p.component\n");
+	unlink("$dir/firmware/dep11/$p.component");
     }
+
+    # Find the current size of the firmware Contents file, and grep
+    # out from the current data
+    my $contents_blocks_old = 0;
+    my $cont_file = "$dir/firmware/Contents-firmware";
+    open(OFILE, "> $cont_file.1");
+    if (-f $cont_file) {
+	$contents_blocks_old = get_file_blocks($cont_file);
+	open(IFILE, "< $cont_file");
+	while (defined(my $line = <IFILE>)) {
+	    chomp $line;
+	    if ($line !~ /\b$base_file$/) {
+		print OFILE "$line\n";
+	    }
+	}
+	close IFILE;
+    }
+    close OFILE;
+    rename "$cont_file.1", "$cont_file";
+    my $contents_blocks_new = get_file_blocks($cont_file);
+    $blocks_removed += $contents_blocks_new - $contents_blocks_old;
 
     return $blocks_removed;
 }
@@ -1534,6 +1628,9 @@ sub add_packages {
                 unlink ("$dir/$file") || msg_ap(0, "Couldn't delete file $dir/$file\n");
                 msg_ap(0, "  Rollback: removed $dir/$file\n");
             }
+	    # Try to remove the directory; will silently fail if there
+	    # are still files there, which is OK.
+	    rmdir ($dir);
         } else {
             $total_blocks += add_Packages_entry($dir, $arch, $in_backports, $package_info);
             $total_blocks += add_md5_entry($dir, $arch, $in_backports, $package_info);

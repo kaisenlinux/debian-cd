@@ -1,3 +1,189 @@
+debian-cd (3.2.1-1kaisen) kaisen-packages; urgency=medium
+
+  * Use a quilt package instead of native package
+  * Import new upstream release
+
+ -- Kevin Chevreuil - Kaisen <kaisen@kaisenlinux.org>  Sat, 10 Aug 2024 22:10:04 +0200
+
+debian-cd (3.2.1) unstable; urgency=medium
+
+  [ James Addison ]
+  * firmware: use hard links rather than symlinks. Closes: #1031696
+
+  [ Steve McIntyre ]
+  * Kill loadlin, nobody has DOS any more. Also Stop copying the
+    /tools directory from the mirror, as that's all that's left there
+    now.
+
+  [ Cyril Brulebois ]
+  * tools/generate_di+k_list: Add zstd alongside initramfs-tools and
+    busybox, since it's now getting installed by base-installer (starting
+    with 1.212).
+
+ -- Cyril Brulebois <kibi@debian.org>  Sun, 30 Apr 2023 18:11:17 +0200
+
+debian-cd (3.2.0) unstable; urgency=medium
+
+  [ Cyril Brulebois — high-level summary ]
+  * This release implements many changes related to the 2022 General
+    Resolution about non-free firmware. In particular, this means adding
+    metadata related to firmware packages, allowing hw-detect to configure
+    apt-setup according to firmware packages getting deployed. In the
+    general case, systems installed using netinst should only get main and
+    non-free-firmware (if such firmware packages are needed) configured,
+    without contrib or non-free.
+  * Builds involving local packages (LOCAL and LOCALDEBS settings) were
+    also reworked. This feature is not used for official builds, and some
+    catch-up was needed (apt becomes stricter over time). The expected
+    layout for local packages was clarified (see comments in CONF.sh), and
+    while it is expected to be clearer and better than it was, it might
+    require some local adjustments.
+
+  [ Cyril Brulebois ]
+  * CONF.sh (and README):
+     + Clarify expected layout below the LOCALDEBS directory.
+     + Clarify relationships between NONFREE, NONFREE_COMPONENTS, and
+       FORCE_FIRMWARE.
+     + Keep only non-free-firmware in NONFREE_COMPONENTS, as the
+       interesting firmware packages have been moved from non-free to
+       non-free-firmware.
+     + Unset CONTRIB for consistency: NONFREE is unset, and packages in
+       contrib are usually there because they depend on packages in
+       non-free.
+  * apt-selection:
+     + Annotate local repositories with [trusted=yes].
+  * easy-build.sh (and Packages-gen):
+     + Create top-level Release files for local packages, allowing apt to
+       validate Packages files (when UPDATE_LOCAL=1 is set).
+     + Create both compressed and uncompress Packages files: apt is
+       unhappy if uncompressed files are missing; the package indexing
+       done in various places is unhappy if compressed files are missing.
+  * generate_firmware_patterns:
+     + Refresh modalias information for the firmware-sof-signed package
+       (using linux-image-6.1.0-1-amd64 version 6.1.4-1).
+     + Make sure dep11 metadata files are present.
+     + Rewrite to work on a single package at once (working on ALL was
+       mostly interesting during early development).
+  * generate_firmware_tasks:
+     + Search for firmware packages only in the configured components,
+       instead of searching in all available components. This means main
+       in any case, while contrib, non-free, and non-free-firmware depend
+       on the CONTRIB, NONFREE, NONFREE_COMPONENTS, and related variables.
+     + Implement support for pseudo-option --list-filenames, making the
+       firmware package search reusable.
+  * make-firmware-image:
+     + Use generate_firmware_task to find firmware packages.
+     + Implement firmware/dep11 generation for bookworm and later. This
+       tool is responsible for generating the firmware tarball, zip, and
+       cpio archives that can be used to extend installation media which
+       don't contain firmware packages. This allows hw-detect to benefit
+       from the same metadata as found in e.g. the netinst image.
+  * make_disc_trees.pl:
+     + Add leading / to paths in Contents-firmware indices, making it
+       easier to use by hw-detect.
+     + Add component column to Contents-firmware indices, making it
+       possible for hw-detect to set the right apt-setup/$component
+       parameters.
+     + Store $package.component files alongside $package.patterns files
+       for firmware packages, also to help hw-detect.
+     + Create /firmware before adding symlinks, and error out if symlink
+       creation fails.
+     + Improve block calculation for firmware-related metadata files.
+     + Merge “local” udebs into “main” explicitly.
+     + Rewrite .disk/base_components if needed: setting LOCAL=1 results
+       in debootstrap's being called with --components=main,local while
+       there might be no debs on the image (depending on the contents of
+       the LOCALDEBS directory)… in that case, rewrite base_components
+       without “local”.
+  * start_new_disc:
+     + Remove /dists/local commodity symlink: it's unclear what it is or
+       was useful for, and it generated a lot of confusion during this
+       development cycle (local = component or codename?!), masking other
+       shortcomings.
+  * Replace all gzip -9 variations with pigz -9nm ones.
+  * Add pigz to Depends accordingly.
+  * Add uuid-runtime to Depends (missed in 3.1.36).
+
+  [ Samuel Thibault ]
+  * Fix missing %install% replacements, fixing support for automatically
+    starting a specific entry when a timeout is reached.
+
+  [ Steve McIntyre ]
+  * make-firmware-image: Add a list file to show what's included in
+    the firmware archives.
+  * Add new config option DISABLE_UEFI_32 to control mixed-mode EFI on
+    x86 builds. Closes: #1031424
+  * Add iucode-tool to the list of base packages wanted for amd64 and
+    i386, so we will have it available for installing CPU microcode.
+
+ -- Cyril Brulebois <kibi@debian.org>  Fri, 24 Feb 2023 17:04:14 +0100
+
+debian-cd (3.1.36) unstable; urgency=medium
+
+  [ Steve McIntyre ]
+  * Start bookworm development, copy the bullseye dirs to bookworm as
+    a start.
+  * Use $CODENAME/updates for security pre-bullseye, or
+    $CODENAME-security for bullseye onwards.
+  * Tweak grub boot menu highlight graphics to work again - switch
+    from greyscale to colour, as newer grub has removed greyscale PNG
+    support. Closes: #1013079, #1013432.
+  * Add non-free-firmware support
+    + Add an extra config variable NONFREE_COMPONENTS to declare where
+      to look for non-free packages.
+  * Add a Contents-firmware file to help with looking up firmware
+    packages in d-i.
+  * Change how we find the installer when booting via grub-efi:
+    instead of looking for the .disk/info file, use .disk/id/$UUID
+    instead. Closes: #1024346, #1024720.
+  * Add 32-bit EFI binaries to all amd64 images too, so we no longer
+    need a multi-arch image for Bay Trail etc.
+  * Stop adding win32-loader stuff, it's dead.
+
+  [ Cyril Brulebois ]
+  * generate_firmware_patterns: Drop support for the temporary --test
+    option.
+
+  [ Raphaël Hertzog ]
+  * Add cryptsetup-initramfs to tools/generate_di+k_list as cryptsetup 2.4.0
+    dropped the recommends on the package and it's needed by d-i.
+  * Fix install_firmwares_initrd to not fail when the firmware is not found.
+  * Implement recursive lookup of Recommends and Suggests in sort_deps.
+    Closes: #601203
+  * Remove tools/sort_deps_edu since its only purpose was to try to implement
+    the above recursive lookup.
+  * Remove dead code in sort_deps and improve generated log messages.
+
+  [ Wolfgang Schweer ]
+  * data/bookworm: Use Debian Edu 12 installer logo and syslinux splash image
+    from src:debian-edu-artwork 2.12.0.1-1 (showing version number 12).
+  * tasks/sid: Replace bullseye with bookworm.
+
+  [ Daniel Lewart ]
+  * Update default CODENAME to bookworm in various places.
+    Closes: #994121
+
+  [ Jonathan Hettwer ]
+  * Avoid embedding timestamps into gzipped Packages and Translations files.
+  * Pass --invariant and -i deb00001 to mkfs.msdos
+
+  [ Samuel Thibault ]
+  * On firmware images, include the sound firmwares in the espeakup-enabled
+    initrd itself. Closes: #992699
+
+  [ John Paul Adrian Glaubitz ]
+  * Remove leftover files of silo bootloader on sparc.
+  * Remove leftover files of silo bootloader on sparc64.
+
+  [ Debian Janitor ]
+  * Update lintian override info to new format on line 1, 2, 3.
+  * Update standards version to 4.6.1, no changes needed.
+
+  [ Holger Levsen ]
+  * Update standards version to 4.6.2, no changes needed.
+
+ -- Holger Levsen <holger@debian.org>  Sun, 15 Jan 2023 13:11:24 +0100
+
 debian-cd (3.1.35+kaisen3) kaisen-packages; urgency=medium
 
   * Add cryptsetup-initramfs in the tools/generate_di+k_list file

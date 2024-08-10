@@ -54,19 +54,19 @@ if [ $NUM_ARCHES = 1 ] ; then
     case $ARCHES in
         source)
             SOURCEDISK=1
-            export DISKINFO="$VOLID_BASE"
-            export VOLID="$VOLID_BASE"
+            export DISKINFO="$DISKINFO_DISTRO $DEBVERSION \"$CAPCODENAME\" - $OFFICIAL $DISKTYPE Source-$DISKNUM $BUILD_DATE"
+            export VOLID="$VOLID_BASE Source $DISKNUM"
             export SOURCEONLY=yes
             ;;
         *)
             BINARYDISK=1
 	    DISKNUMSTRING="$DISKNUM"
-            export DISKINFO="$VOLID_BASE"
+            export DISKINFO="$DISKINFO_DISTRO ${DEBIAN_KERNEL} $DEBVERSION \"$CAPCODENAME\" - $OFFICIAL $ARCHES $DISKTYPE Binary-${DISKNUM}${FIRMWARE_TEXT} $BUILD_DATE"
 	    if [ $DISKTYPE = NETINST ]; then
 		# Use "n" as a "disknum" here, #858031
 		DISKNUMSTRING="n"
 		# Don't need a disknum here - only one netinst
-		export DISKINFO="$VOLID_BASE"
+		export DISKINFO="$DISKINFO_DISTRO ${DEBIAN_KERNEL} $DEBVERSION \"$CAPCODENAME\" - $OFFICIAL $ARCHES $DISKTYPE${FIRMWARE_TEXT} $BUILD_DATE"
 	    fi
             case "$ARCHES" in
                 ppc64el)
@@ -82,7 +82,7 @@ if [ $NUM_ARCHES = 1 ] ; then
                 hurd-i386)
                     export VOLID="$VOLID_BASE h-i386 $DISKNUMSTRING" ;;
                 *)
-                    export VOLID="$VOLID_BASE" ;;
+                    export VOLID="$VOLID_BASE $ARCHES $DISKNUMSTRING" ;;
             esac
             ;;
     esac
@@ -93,8 +93,8 @@ else
         *source*) SOURCEDISK=1;;
     esac
     export ARCHDEF=`echo $ARCHES | sed 's? ?/?g'`
-    export DISKINFO="$VOLID_BASE"
-    export VOLID="$VOLID_BASE"
+    export DISKINFO="$DISKINFO_DISTRO ${DEBIAN_KERNEL} $DEBVERSION \"$CAPCODENAME\" - $OFFICIAL Multi-architecture $ARCHDEF $DISKTYPE${FIRMWARE_TEXT} #$DISKNUM $BUILD_DATE"
+    export VOLID="$VOLID_BASE M-A $DISKNUM"
 fi
 
 merge_include_exclude () {
@@ -132,12 +132,6 @@ if [ "$BACKPORTS"x != ""x ] ; then
     if [ ! -d $CDDIR/dists/$CODENAME-backports ] ; then
 	mkdir -p $CDDIR/dists/$CODENAME-backports
     fi
-fi
-
-# Commodity link for tools which want local in dists/local/local ...
-if [ -n "$LOCAL" ]
-then
-    ln -sf $CODENAME $CDDIR/dists/local
 fi
 
 if [ ! -d $CDDIR/.disk ] ; then
@@ -182,6 +176,7 @@ if [ $DISKNUM = 1 ] ; then
     echo "  Adding .disk/base_components"
     echo "main" > $CDDIR/.disk/base_components
     if [ -n "$LOCAL" ] ; then
+        # This might be reverted by finish_disc in the end:
         echo "local" >> $CDDIR/.disk/base_components
     fi
 
@@ -343,7 +338,7 @@ cd $CDDIR
 
 SECTIONS="main"
 if [ "${NONFREE:-0}" != "0" -o "${EXTRANONFREE:-0}" != "0" ] ; then
-    SECTIONS="${SECTIONS} non-free"
+    SECTIONS="${SECTIONS} $NONFREE_COMPONENTS"
 fi
 if [ "${CONTRIB:-0}" != "0" ] ; then
     SECTIONS="${SECTIONS} contrib"

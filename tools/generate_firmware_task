@@ -10,6 +10,7 @@
 # 3. For those that do, output the package name into the firmware task
 #
 # Copyright Steve McIntyre <93sam@debian.org> 2011
+# Copyright Cyril Brulebois <kibi@debian.org> 2023
 #
 # GPL 2
 #
@@ -18,11 +19,88 @@ use strict;
 
 my ($mirror, $codename, $archlist, $outfile, $localdebs, $backports);
 my $date;
-my $pkgfiles = "";
-my $bp_pkgfiles = "";
+my (@pkgfiles, @bp_pkgfiles);
 my ($pkg, $filename, $arch);
 my %seen;
+my @components;
 
+
+sub contains_firmware($$) {
+    my $count = 0;
+    open (PKGLISTING, "dpkg --contents $mirror/$filename | grep ' ./lib/firmware/' |") or
+	die "Can't check package file $filename: $!\n";
+    while ($_ = <PKGLISTING>) {
+	$count++;
+    }
+    if ($count) {
+	return 1;
+    } else {
+	return 0;
+    }
+}
+
+sub check_packages($$@) {
+    my ($use_bp, $orig_mode, @pkgfiles) = @_;
+
+    for my $pkgfile (@pkgfiles) {
+	open (INPKG, "\$BASEDIR/tools/catz $pkgfile |") or die "Can't read input package files: $!\n";
+	$/ = ''; # Browse by paragraph
+
+	while (defined($_ = <INPKG>)) {
+	    m/^Package: (\S+)/m and $pkg = $1;
+	    m/^Filename: (\S+)/m and $filename = $1;
+
+	    if (! ($pkg =~ /(microcode|firmware)/)) {
+		next;
+	    }
+
+	    if (!exists $seen{$filename}) {
+		$seen{$filename} = 1;
+		if (contains_firmware($mirror, $filename)) {
+		    printf STDERR "  %-35s (%s)\n", $pkg, $filename;
+		    if ($orig_mode) {
+			if ($use_bp) {
+			    print OUT "$pkg/$codename-backports\n";
+			} else {
+			    print OUT "$pkg\n";
+			}
+		    } else {
+			print "$filename $pkgfile\n";
+		    }
+		}
+	    }
+	}
+	close INPKG;
+    }
+}
+
+
+# Either the caller tells us explicitly which components to use, or we make this
+# determination on our own, based on various environment variables:
+sub read_env {
+    my $env_var = shift;
+    my $default = shift;
+
+    if (exists($ENV{$env_var})) {
+	return $ENV{$env_var};
+    }
+    # else
+    return $default;
+}
+
+# Either the caller tells us explicitly which components to use, or we make this
+# determination on our own, based on various environment variables, just like
+# tools/apt-selection does:
+@components = split /\ /, read_env('FIRMWARE_COMPONENTS', '');
+if (!@components) {
+    @components = qw(main);
+    if (read_env('CONTRIB', 0) == 1) {
+	push @components, qw(contrib);
+    }
+    if (read_env('NONFREE', 0) == 1 or read_env('EXTRANONFREE', 0) == 1 or read_env('FORCE_FIRMWARE', 0) == 1) {
+	push @components, (split / /, read_env('NONFREE_COMPONENTS', ''));
+    }
+}
 $codename = $ENV{'CODENAME'};
 $mirror = $ENV{'MIRROR'};
 $localdebs = $ENV{'LOCALDEBS'};
@@ -36,86 +114,55 @@ if (!defined($codename) || !defined($mirror) ||
 }
 
 foreach $arch (split(' ', $archlist)) {
-    if (defined($backports)) {
-	$bp_pkgfiles = "$pkgfiles $mirror/dists/$codename-backports/*/binary-$arch/Packages.gz";
-	$bp_pkgfiles = "$pkgfiles $mirror/dists/$codename-backports/*/binary-$arch/Packages.xz";
+    for my $component (@components) {
+	if (defined($backports)) {
+	    push @bp_pkgfiles, "$mirror/dists/$codename-backports/$component/binary-$arch/Packages.gz";
+	    push @bp_pkgfiles, "$mirror/dists/$codename-backports/$component/binary-$arch/Packages.xz";
+	}
+	push @pkgfiles, "$mirror/dists/$codename/$component/binary-$arch/Packages.gz";
+	push @pkgfiles, "$mirror/dists/$codename/$component/binary-$arch/Packages.xz";
     }
-    $pkgfiles = "$pkgfiles $mirror/dists/$codename/*/binary-$arch/Packages.gz";
-    $pkgfiles = "$pkgfiles $mirror/dists/$codename/*/binary-$arch/Packages.xz";
 }
 
 if (defined($localdebs)) {
-    foreach $arch (split(' ', $archlist)) {
-	if (defined($backports)) {
-	    $bp_pkgfiles = "$pkgfiles $localdebs/dists/$codename-backports/*/binary-$arch/Packages.gz";
-	    $bp_pkgfiles = "$pkgfiles $localdebs/dists/$codename-backports/*/binary-$arch/Packages.xz";
-	}
-        $pkgfiles = "$pkgfiles $localdebs/dists/$codename/*/binary-$arch/Packages.gz";
-        $pkgfiles = "$pkgfiles $localdebs/dists/$codename/*/binary-$arch/Packages.xz";
-    }
-}
-
-open (OUT, "> $outfile") or die "Can't open outfile for writing: $!\n";
-
-$date = `date -u`;
-chomp $date;
-
-print OUT "/*\n";
-print OUT " * 'firmware' task file; generated automatically by generate_firmware_task\n";
-print OUT " * for \"$archlist\" on $date\n";
-print OUT " * Do not edit - changes will not be preserved\n";
-print OUT " */\n";
-
-print "$0: Checking for firmware packages:\n";
-
-sub contains_firmware($$) {
-    my $count = 0;
-    open (PKGLISTING, "dpkg --contents $mirror/$filename | grep ' ./lib/firmware/' |") or
-        die "Can't check package file $filename: $!\n";
-    while ($_ = <PKGLISTING>) {
-        $count++;
-    }
-    if ($count) {
-        return 1;
-    } else {
-        return 0;
-    }
-}
-
-sub check_packages($$) {
-    my $use_bp = shift;
-    my $packages = shift;
-
-    open (INPKG, "\$BASEDIR/tools/catz $packages |") or die "Can't read input package files: $!\n";
-    $/ = ''; # Browse by paragraph
-
-    while (defined($_ = <INPKG>)) {
-	m/^Package: (\S+)/m and $pkg = $1;
-	m/^Filename: (\S+)/m and $filename = $1;
-
-	if (! ($pkg =~ /(microcode|firmware)/)) {
-	    next;
-	}
-
-	if (!exists $seen{$filename}) {
-	    $seen{$filename} = 1;
-	    if (contains_firmware($mirror, $filename)) {
-		print "  $pkg ($filename)\n";
-		if ($use_bp) {
-		    print OUT "$pkg/$codename-backports\n";
-		} else {
-		    print OUT "$pkg\n";
-		}
+    for my $component (@components) {
+	foreach $arch (split(' ', $archlist)) {
+	    if (defined($backports)) {
+		push @bp_pkgfiles, "$localdebs/dists/$codename-backports/$component/binary-$arch/Packages.gz";
+		push @bp_pkgfiles, "$localdebs/dists/$codename-backports/$component/binary-$arch/Packages.xz";
 	    }
+	    push @pkgfiles, "$localdebs/dists/$codename/$component/binary-$arch/Packages.gz";
+	    push @pkgfiles, "$localdebs/dists/$codename/$component/binary-$arch/Packages.xz";
 	}
     }
-    close INPKG;
 }
 
+# This special filename is an crude but easy way to distinguish the historical
+# caller (top-level Makefile) from tools/make-firmware-image which should use
+# the same logic, but is interested in the Filename for interesting firmware
+# packages:
+my $orig_mode = $outfile ne '--list-filenames-and-indices' ? 1 : 0;
+if ($orig_mode) {
+    # Prepare the output file:
+    open (OUT, "> $outfile") or die "Can't open outfile for writing: $!\n";
+
+    $date = `date -u`;
+    chomp $date;
+
+    print OUT "/*\n";
+    print OUT " * 'firmware' task file; generated automatically by generate_firmware_task\n";
+    print OUT " * for \"$archlist\" on $date\n";
+    print OUT " * Do not edit - changes will not be preserved\n";
+    print OUT " */\n";
+}
+
+# Those function calls will either write the task to OUT (historical mode) or
+# filenames to stdout (for make-firmware-image):
 if (defined($backports)) {
-    check_packages(1, $bp_pkgfiles);
+    check_packages(1, $orig_mode, @bp_pkgfiles);
 }
-check_packages(0, $pkgfiles);
+check_packages(0, $orig_mode, @pkgfiles);
 
-close OUT;
-
+if ($orig_mode) {
+    close OUT;
+}

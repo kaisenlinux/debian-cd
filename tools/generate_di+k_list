@@ -118,12 +118,15 @@ ca-certificates
 #endif
 
 #ifdef ARCH_i386
+iucode-tool
 initramfs-tools
 busybox
+zstd
 grub-pc
 grub-efi
 grub-efi-ia32
 grub-efi-ia32-bin
+grub-efi-ia32-signed
 shim-signed
 laptop-detect
 libc6-i686
@@ -152,13 +155,18 @@ linux-headers-686-pae
 #endif
 
 #ifdef ARCH_amd64
+iucode-tool
 initramfs-tools
 busybox
+zstd
 grub-pc
 grub-efi
 grub-efi-amd64
 grub-efi-amd64-bin
 grub-efi-amd64-signed
+grub-efi-ia32
+grub-efi-ia32-bin
+grub-efi-ia32-signed
 shim-signed
 laptop-detect
 linux-image-amd64
@@ -168,6 +176,7 @@ linux-headers-amd64
 #ifdef ARCH_ia64
 initramfs-tools
 busybox
+zstd
 grub-efi
 grub-efi-ia64
 grub-efi-ia64-bin
@@ -206,6 +215,7 @@ linux-image-sb1a-bcm91480b
 #ifdef ARCH_armel
 initramfs-tools
 busybox
+zstd
 slugimage
 flash-kernel
 nslu2-utils
@@ -221,6 +231,7 @@ linux-image-versatile
 #ifdef ARCH_armhf
 initramfs-tools
 busybox
+zstd
 flash-kernel
 linux-image-armmp
 linux-image-armmp-lpae
@@ -232,6 +243,7 @@ grub-efi-arm-bin
 #ifdef ARCH_arm64
 initramfs-tools
 busybox
+zstd
 flash-kernel
 linux-image-arm64
 grub-efi
@@ -245,6 +257,7 @@ shim-signed
 initramfs-tools
 grub-ieee1275
 busybox
+zstd
 libc6-sparcv9b
 libc6-sparcv9
 linux-image-sparc32
@@ -257,6 +270,7 @@ linux-image-sparc64-smp
 initramfs-tools
 grub-ieee1275
 busybox
+zstd
 linux-image-sparc64
 linux-image-sparc64-smp
 #endif
@@ -264,6 +278,7 @@ linux-image-sparc64-smp
 #ifdef ARCH_m68k
 initramfs-tools
 busybox
+zstd
 linux-image-m68k
 #endif
 
@@ -271,6 +286,7 @@ linux-image-m68k
 initramfs-tools
 grub-ieee1275
 busybox
+zstd
 laptop-detect
 quik
 powerpc-utils
@@ -286,6 +302,7 @@ linux-image-prep
 initramfs-tools
 grub-ieee1275
 busybox
+zstd
 hfsutils
 powerpc-utils
 powerpc-ibm-utils
@@ -296,6 +313,7 @@ linux-image-powerpc64
 initramfs-tools
 grub-ieee1275
 busybox
+zstd
 powerpc-utils
 powerpc-ibm-utils
 linux-image-powerpc64le
@@ -304,6 +322,7 @@ linux-image-powerpc64le
 #ifdef ARCH_alpha
 initramfs-tools
 busybox
+zstd
 aboot
 linux-image-alpha-generic
 linux-image-alpha-smp
@@ -312,6 +331,7 @@ linux-image-alpha-smp
 #ifdef ARCH_hppa
 initramfs-tools
 busybox
+zstd
 palo
 linux-image-parisc
 linux-image-parisc64-smp

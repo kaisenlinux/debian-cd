@@ -14,6 +14,7 @@ fi
 
 # Unset all optional variables first to start from a clean state
 unset NONFREE           || true
+unset NONFREE_COMPONENTS|| true
 unset CONTRIB           || true
 unset EXTRANONFREE      || true
 unset LOCAL             || true
@@ -63,14 +64,14 @@ export BASEDIR=`pwd`
 # export CDNAME=debian
 
 # Building $codename cd set ...
-export CODENAME=bullseye
+export CODENAME=bookworm
 
 # By default use Debian installer packages from $CODENAME
 if [ -z "$DI_CODENAME" ]; then
 	export DI_CODENAME=$CODENAME
 fi
 # If you want backported d-i (e.g. by setting
-# DI_CODENAME=jessie-backports, then you'll almost definitely also
+# DI_CODENAME=bookworm-backports, then you'll almost definitely also
 # want to enable BACKPORTS below as well
 
 # Should we include some packages from backports? If so, point at a
@@ -86,8 +87,8 @@ fi
 # the Debian mirror.
 #export DI_WWW_HOME=default
 
-# Version number, "2.2 r0", "2.2 r1" etc.
-export DEBVERSION="11.0.0"
+# Version number, "10.11.0", "11.1.0", "testing", etc
+export DEBVERSION="12.0.0"
 
 # Official or non-official set.
 # NOTE: THE "OFFICIAL" DESIGNATION IS ONLY ALLOWED FOR IMAGES AVAILABLE
@@ -132,20 +133,23 @@ export OUT=/srv/mirror/debian-cd-test
 # This cannot reside on an NFS mount.
 export APTTMP=/srv/mirror/tmp/apt
 
-# Do I want to have NONFREE merged in the CD set
+# Do I want to have NONFREE merged in the CD set?
 # export NONFREE=1
 
-# Do I want to have CONTRIB merged in the CD set
-export CONTRIB=1
+# Do I want to have CONTRIB merged in the CD set?
+# export CONTRIB=1
 
-# Do I want to have NONFREE on a separate CD (the last CD of the CD set)
+# Where should I look for non-free packages?
+export NONFREE_COMPONENTS="non-free-firmware"
+
+# Do I want to have NONFREE on separate image(s) at the end set?
 # WARNING: Don't use NONFREE and EXTRANONFREE at the same time !
 # export EXTRANONFREE=1
 
-# Do I want to force (potentially non-free) firmware packages to be
-# placed on disc 1? Will make installation much easier if systems
-# contain hardware that depends on this firmware
-# export FORCE_FIRMWARE=1
+# Do I want to force (potentially non-free, depending on the NONFREE_COMPONENTS
+# setting) firmware packages to be placed on disc 1? Will make installation
+# much easier if systems contain hardware that depends on this firmware
+export FORCE_FIRMWARE=1
 
 # If you have a $MIRROR/dists/$CODENAME/local/binary-$ARCH dir with 
 # local packages that you want to put on the CD set then
@@ -153,8 +157,25 @@ export CONTRIB=1
 # export LOCAL=1
 
 # If your local packages are not under $MIRROR, but somewhere else, 
-# you can uncomment this line and edit to to point to a directory
-# containing dists/$CODENAME/local/binary-$ARCH
+# you can uncomment this line and edit it to point to a directory
+# containing:
+#  - dists/$CODENAME/local/binary-$ARCH/*.deb
+#  - dists/$CODENAME/local/debian-installer/binary-$ARCH/*.udeb
+#
+# Some metadata must exist for those packages to be considered:
+#  - dists/$CODENAME/local/binary-$ARCH/Packages.(gz|xz)
+#  - dists/$CODENAME/local/debian-installer/binary-$ARCH/Packages.(gz|xz)
+#
+# and apt will likely want a top-level Release file as well, and
+# possibly uncompressed Packages files as well in each directory:
+#  - dists/$CODENAME/Release
+#  - dists/$CODENAME/local/binary-$ARCH/Packages
+#  - dists/$CODENAME/local/debian-installer/binary-$ARCH/Packages
+#
+# At least that's what was observed while updating easy-build.sh (which
+# has an UPDATE_LOCAL=1 setting, controlling whether to run Packages-gen)
+# for year 2023, good luck! -- kibi
+#
 # export LOCALDEBS=/home/joey/debian/va/debian
 
 # Where to find the security patches.  This directory should be the
@@ -201,6 +222,12 @@ export JIGDO_CHECKSUM="md5"
 #export amd64_MKISOFS="xorriso"
 #export amd64_MKISOFS_OPTS="-as mkisofs -r -checksum_algorithm_iso sha256,sha512"
 
+# amd64 builds will also include 32-bit UEFI files by default, to
+# allow for booting on weird machines with 64-bit CPUs but 32-bit
+# firmware like Baytrail or some models of Apple iMac. To disable
+# this, uncomment the following:
+# export DISABLE_UEFI_32=1
+
 # Keyring (defaults):
 #export ARCHIVE_KEYRING_PACKAGE=debian-archive-keyring
 # The path to the keyring file relative to $TDIR/archive-keyring/
@@ -208,8 +235,8 @@ export JIGDO_CHECKSUM="md5"
 
 # Extra keys that you might want apt to trust. List their fingerprints
 # here and debian-cd will grab them from the user's keyring as needed
-# (The example here is the buster release key)
-#export ARCHIVE_EXTRA_KEYS="80D15823B7FD1561F9F7BCDDDC30D7C23CBBABEE"
+# (The example here is the bullseye release key)
+#export ARCHIVE_EXTRA_KEYS="1F89983E0081FDE018F3CC9673A4F27B8DD47936"
 
 # By default we use debootstrap --no-check-gpg to find out the minimal set
 # of packages because there's no reason to not trust the local mirror. But
