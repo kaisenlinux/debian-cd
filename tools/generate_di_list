@@ -132,13 +132,24 @@ foreach my $arch (@ARCHES) {
 		if (grep { $udeb =~ /^${_}$/ } @exclude) {
 		    next;
 		}
-		if ($udeb =~ m/-modules-([0-9]*)\.([0-9]*)\.([0-9]*)-(\d+)-.*-di/) {
+		if ($udeb =~ m/-modules-(\d+)\.(\d+)\.(\d+)-(\d+)-.*-di/) {
+		    # Older udeb package names included the ABI here
 		    my $kernel_ver = di_ker_abi_to_number($1, $2, $3, $4);
 		    if ($kernel_ver > $highest_kernel_ver) {
 			$highest_kernel_ver = $kernel_ver;
 		    }
 		    # Append this driver udeb to a list for that kernel_ver
 		    push(@{ $driver_udebs{$kernel_ver} }, $udeb);
+
+		} elsif ($udeb =~ m/-modules-(\d+)\.(\d+)\.(\d+)-.*-di/) {
+		    # Newer udeb package names don't, so use "0" as a dummy value here
+		    my $kernel_ver = di_ker_abi_to_number($1, $2, $3, 0);
+		    if ($kernel_ver > $highest_kernel_ver) {
+			$highest_kernel_ver = $kernel_ver;
+		    }
+		    # Append this driver udeb to a list for that kernel_ver
+		    push(@{ $driver_udebs{$kernel_ver} }, $udeb);
+
 		} else {
 		    #print "found non-driver udeb $udeb\n";
 		    push @output_udebs, $udeb;

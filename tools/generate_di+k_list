@@ -66,6 +66,7 @@ ufsutils
 zfsutils
 cryptsetup
 cryptsetup-initramfs
+systemd-cryptsetup
 loop-aes-utils
 dmraid
 open-iscsi
@@ -73,6 +74,10 @@ open-iscsi
  * during installation process if multipath is used
  */
 multipath-tools-boot
+
+/* Needed for pkgsel */
+tasksel-data
+tasksel
 
 /* Networking */
 wireless-tools
@@ -117,11 +122,13 @@ ca-certificates
 #    include <firmware>
 #endif
 
-#ifdef ARCH_i386
-iucode-tool
+/* Extra common bits for all arches */
 initramfs-tools
 busybox
 zstd
+
+#ifdef ARCH_i386
+iucode-tool
 grub-pc
 grub-efi
 grub-efi-ia32
@@ -156,9 +163,6 @@ linux-headers-686-pae
 
 #ifdef ARCH_amd64
 iucode-tool
-initramfs-tools
-busybox
-zstd
 grub-pc
 grub-efi
 grub-efi-amd64
@@ -174,9 +178,6 @@ linux-headers-amd64
 #endif
 
 #ifdef ARCH_ia64
-initramfs-tools
-busybox
-zstd
 grub-efi
 grub-efi-ia64
 grub-efi-ia64-bin
@@ -187,7 +188,6 @@ linux-image-mckinley-smp
 #endif
 
 #ifdef ARCH_mips
-initramfs-tools
 arcboot
 sibyl
 linux-image-octeon
@@ -198,7 +198,6 @@ linux-image-sb1a-bcm91480b
 #endif
 
 #ifdef ARCH_mipsel
-initramfs-tools
 sibyl
 colo
 delo
@@ -212,10 +211,15 @@ linux-image-sb1-bcm91250a
 linux-image-sb1a-bcm91480b
 #endif
 
+#ifdef ARCH_mips64el
+linux-image-5kc-malta
+linux-image-loongson-3
+linux-image-mips64r2el
+linux-image-mips64r6el
+linux-image-octeon
+#endif
+
 #ifdef ARCH_armel
-initramfs-tools
-busybox
-zstd
 slugimage
 flash-kernel
 nslu2-utils
@@ -229,35 +233,34 @@ linux-image-versatile
 #endif
 
 #ifdef ARCH_armhf
-initramfs-tools
-busybox
-zstd
 flash-kernel
-linux-image-armmp
-linux-image-armmp-lpae
 grub-efi
 grub-efi-arm
 grub-efi-arm-bin
+linux-image-armmp
+linux-image-armmp-lpae
 #endif
 
 #ifdef ARCH_arm64
-initramfs-tools
-busybox
-zstd
 flash-kernel
-linux-image-arm64
 grub-efi
 grub-efi-arm64
 grub-efi-arm64-bin
 grub-efi-arm64-signed
 shim-signed
+linux-image-arm64
+#endif
+
+#ifdef ARCH_riscv64
+grub-efi
+grub-efi-riscv64
+grub-efi-riscv64-bin
+u-boot-efi-dtb
+linux-image-riscv64
 #endif
 
 #ifdef ARCH_sparc
-initramfs-tools
 grub-ieee1275
-busybox
-zstd
 libc6-sparcv9b
 libc6-sparcv9
 linux-image-sparc32
@@ -267,26 +270,17 @@ linux-image-sparc64-smp
 #endif
 
 #ifdef ARCH_sparc64
-initramfs-tools
 grub-ieee1275
-busybox
-zstd
 linux-image-sparc64
 linux-image-sparc64-smp
 #endif
 
 #ifdef ARCH_m68k
-initramfs-tools
-busybox
-zstd
 linux-image-m68k
 #endif
 
 #ifdef ARCH_powerpc
-initramfs-tools
 grub-ieee1275
-busybox
-zstd
 laptop-detect
 quik
 powerpc-utils
@@ -299,10 +293,7 @@ linux-image-prep
 #endif
 
 #ifdef ARCH_ppc64
-initramfs-tools
 grub-ieee1275
-busybox
-zstd
 hfsutils
 powerpc-utils
 powerpc-ibm-utils
@@ -310,48 +301,39 @@ linux-image-powerpc64
 #endif
 
 #ifdef ARCH_ppc64el
-initramfs-tools
 grub-ieee1275
-busybox
-zstd
 powerpc-utils
 powerpc-ibm-utils
 linux-image-powerpc64le
 #endif
 
 #ifdef ARCH_alpha
-initramfs-tools
-busybox
-zstd
 aboot
 linux-image-alpha-generic
 linux-image-alpha-smp
 #endif
 
 #ifdef ARCH_hppa
-initramfs-tools
-busybox
-zstd
 palo
 linux-image-parisc
-linux-image-parisc64-smp
+linux-image-parisc64
 #endif
 
 #ifdef ARCH_kfreebsd_amd64
-kfreebsd-image-10-amd64
 grub-pc
+kfreebsd-image-10-amd64
 #endif
 
 #ifdef ARCH_kfreebsd_i386
+grub-pc
 kfreebsd-image-10-486
 kfreebsd-image-10-686
-grub-pc
 libc0.1-i686
 #endif
 
 #ifdef ARCH_hurd_i386
-gnumach-image-1-486
 grub-pc
+gnumach-image-1-486
 libc0.3-i686
 #ifdef VARIANT_xen
 gnumach-image-1-xen-486
@@ -359,8 +341,22 @@ libc0.3-xen
 #endif
 #endif
 
+#ifdef ARCH_hurd_amd64
+grub-pc
+gnumach-image-1-amd64
+#endif
+
 #if defined(ARCH_s390) || defined(ARCH_s390x)
 s390-tools
 sysconfig-hardware
+linux-image-s390x
+#endif
+
+#ifdef ARCH_loong64
+grub-efi
+grub-efi-loong64
+grub-efi-loong64-bin
+linux-image-loong64
+linux-headers-loong64
 #endif
 EOF

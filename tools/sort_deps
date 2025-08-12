@@ -72,6 +72,7 @@ sub msg {
 
 my %included;
 my %excluded;
+my %excluded_firmware;
 my %packages;
 my %backport_packages;
 
@@ -99,6 +100,21 @@ msg(1, yesno($add_sug)."\n");
 msg(1, "Maximum allowed package size: $max_pkg_size bytes\n");
 msg(1, "======================================================================
 ");
+
+# Look for firmware packages that we've been told to exclude
+if ($force_firmware) {
+    msg(1, "Reading tasks/exclude-firmware...\n");
+    my $cpp_command = "cpp -undef -P -Wall -nostdinc -I$dir/tasks -DARCH$arch";
+    my $excludelist = "$dir/tasks/exclude-firmware";
+    open (EXLIST, "$cpp_command $excludelist |") or
+	die "Can't parse exclude list: $!\n";
+    while (defined (my $exc = <EXLIST>)) {
+	chomp $exc;
+	$excluded_firmware{$exc} = 1;
+	msg(1, " - Ignore $exc\n");
+    }
+    close EXLIST;
+}
 
 # Get the information on all packages
 my $oldrs = $/;
@@ -164,7 +180,13 @@ if (not $nonfree) {
 	foreach (grep { $packages{$_}{"Section"} =~ /$cmp\//}
 		 (keys %packages)) {
 	    if ($force_firmware and $packages{$_}{"IsFirmware"}) {
-		msg(1, " - force_firmware: keeping $cmp package $_\n");
+		if ($excluded_firmware{$_}) {
+		    msg(1, " - force_firmware: dropping $cmp package $_ due to listing in tasks/exclude_firmware\n");
+		    $excluded{$_} = 'nonfree-exclude-firmware';
+		    $count_excl++;
+		} else {
+		    msg(1, " - force_firmware: keeping $cmp package $_\n");
+		}
 	    } else {
 		msg(1, " - excluding $cmp package $_\n");
 		$excluded{$_} = 'nonfree';
@@ -346,11 +368,13 @@ if ($extranonfree and (! $nonfree))
 	
 	msg(0, "  Adding non-free* packages now\n");
 
-	# Finally accept non-free packages ...
-	foreach $p (grep { $excluded{$_} eq "nonfree" } (keys %excluded))
-	{
+	# Finally accept non-free packages that were excluded earlier ...
+	foreach my $reason ("nonfree", "nonfree-exclude-firmware") {
+	    foreach $p (grep { $excluded{$_} eq $reason } (keys %excluded))
+	    {
 		$excluded{$p} = 0;
 		push @toinclude, $p;
+	    }
 	}
 	
 	# Include non-free packages

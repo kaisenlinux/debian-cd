@@ -108,8 +108,13 @@ fi
 if [ "$BUILDNAME"x = ""x ] ; then
     BUILDNAME="$OUT_TYPE"
 fi
-TRACEFILE="$BUILDNAME-trace"
-echo "  Making $ARCH ${DISKTYPE} (${BUILDNAME}) in $OUT"
+
+TRACEFILE="$PUBDIRJIG/$OUTARCH/$BUILD.trace"
+#printf "  %s: Making %s %s (%s) in $OUT\n    using config from %s\n    no config in %s\n" \
+#    "$BUILD" "$ARCH" "$DISKTYPE" "$BUILDNAME" \
+#    "$CONFIG_USED" "$CONFIG_UNUSED"
+printf "%s%s: Making %s %s (%s) in $OUT\n" \
+    "$SHOW_BUILDS" "$BUILD" "$ARCH" "$DISKTYPE" "$BUILDNAME"
 
 if [ "$INSTALLER_CD" = "1" ] ; then
     export OFFICIAL="Official BusinessCard Snapshot"
@@ -129,42 +134,36 @@ elif [ "$INSTALLER_CD" = "7" ]; then
     export OFFICIAL="Official Multi-Arch Netinst"
 elif [ "$INSTALLER_CD" = "8" ]; then
     export OFFICIAL="Official Multi-Arch Netinst"
-elif [ "$INSTALLER_CD" = "C" ]; then
-    export OFFICIAL="Unofficial Netinst including firmware"
+
 elif [ "$INSTALLER_CD" = "E" ]; then
     export OFFICIAL="Official Gnome CD Snapshot"
 elif [ "$INSTALLER_CD" = "F" ]; then
     export OFFICIAL="Official Mac Netinst"
 elif [ "$INSTALLER_CD" = "G" ]; then
     export OFFICIAL="Official Debian-Edu Netinst"
-elif [ "$INSTALLER_CD" = "H" ]; then
-    export OFFICIAL="Unofficial Debian-Edu Netinst including firmware"
-elif [ "$INSTALLER_CD" = "I" ]; then
-    export OFFICIAL="Unofficial DVD including firmware"
-elif [ "$INSTALLER_CD" = "J" ]; then
-    export OFFICIAL="Unofficial Multi-Arch DVD including firmware"
+
 elif [ "$INSTALLER_CD" = "K" ]; then
     export OFFICIAL="Debian-Edu Full USB image"
-elif [ "$INSTALLER_CD" = "L" ]; then
-    export OFFICIAL="Unofficial Debian-Edu Full USB image including firmware"
+
 elif [ "$INSTALLER_CD" = "M" ]; then
     export OFFICIAL="Official 16G USB image"
-elif [ "$INSTALLER_CD" = "N" ]; then
-    export OFFICIAL="Unofficial 16G USB image including firmware"
 fi
 
 rm -rf "$OUT"
 mkdir -p "$OUT"
-rm -f "$PUBDIRJIG"/$OUTARCH/$TRACEFILE
+rm -f $TRACEFILE
 #mkdir -p "$LOG"
 
 overview_log="$LOG/overview"
 overview () {
+    LOCK=$overview_log.LOCK
+    lockfile -l 900 -1 -r-1 $LOCK
     if [ -e $overview_log ]; then
     	grep -v " $1 " $overview_log > $overview_log.new
         mv $overview_log.new $overview_log
     fi
     LANG=C echo "$(dpkg --print-architecture) ($(date)) $(whoami)@$(hostname | cut -d . -f 1) $1 $2" >> $overview_log
+    rm -f $LOCK
 }
 
 > $LOGFILE
@@ -178,18 +177,10 @@ else
     SUMS_EXTENSION=".${INSTALLER_CD}"
 fi
 
-if [ "$FORCE_FIRMWARE"x = "1"x ] ; then
-    if [ "${DI}" = "sid" ] ; then
-	ARCHDIR=$OUT_FW_SID/$OUTARCH
-    else
-	ARCHDIR=$OUT_FW_TST/$OUTARCH
-    fi
-else # non-FW build
-    if [ "${DI}" = "sid" ] ; then
-	ARCHDIR=$OUT_FREE_SID/$OUTARCH
-    else
-	ARCHDIR=$OUT_FREE_TST/$OUTARCH
-    fi
+if [ "${DI}" = "sid" ] ; then
+    ARCHDIR=$OUT_FREE_SID/$OUTARCH
+else
+    ARCHDIR=$OUT_FREE_TST/$OUTARCH
 fi
 
 # Do the actual building
@@ -213,7 +204,7 @@ if ./build.sh "$ARCH" >>"$LOGFILE" 2>&1 ; then
             mv $OUT/$BASE.iso $ARCHDIR/iso-cd/$NETINSTNAME.iso
             cat $OUT/$BASE.jigdo | \
                 sed 's/-BC-1/-businesscard/g;s/-NETINST-1/-netinst/g' | \
-                pigz -9nm > $ARCHDIR/jigdo-cd/$NETINSTNAME.jigdo
+                gzip --best --no-name > $ARCHDIR/jigdo-cd/$NETINSTNAME.jigdo
             rm $OUT/$BASE.jigdo
             mv $OUT/$BASE.template $ARCHDIR/jigdo-cd/$NETINSTNAME.template
             # Make sure that the ISO is as new/newer than the jigdo file; #587774
@@ -223,7 +214,7 @@ if ./build.sh "$ARCH" >>"$LOGFILE" 2>&1 ; then
         rm -f "$OUT"/*
         END=`now`
         mkdir -p "$PUBDIRJIG"/$OUTARCH
-        echo -e "start=$START\nend=$END\nerror=0\nlogfile=$RUN\n" > "$PUBDIRJIG"/$OUTARCH/$TRACEFILE
+        echo -e "start=$START\nend=$END\nerror=0\nlogfile=$RUN\n" > $TRACEFILE
 
     else
 
@@ -232,7 +223,7 @@ if ./build.sh "$ARCH" >>"$LOGFILE" 2>&1 ; then
         #######################################
 
         # finish up the jigdos (compress & move them)
-        pigz -9nm "$OUT"/*.jigdo
+        gzip --best --no-name "$OUT"/*.jigdo
         for i in "$OUT"/*.jigdo.gz; do
             mv $i ${i%.gz}
         done
@@ -259,7 +250,7 @@ if ./build.sh "$ARCH" >>"$LOGFILE" 2>&1 ; then
 	mv "$OUT"/*list*gz $ARCHDIR/list-${OUT_TYPE}
 
         END=`now`
-        echo -e "start=$START\nend=$END\nerror=0\nlogfile=$RUN\n" > "$PUBDIRJIG"/$OUTARCH/$TRACEFILE
+        echo -e "start=$START\nend=$END\nerror=0\nlogfile=$RUN\n" > $TRACEFILE
     fi
 
     touch $TDIR/$CODENAME/1.pkgs_extracted # so we don't get errors below
@@ -298,6 +289,6 @@ else
     overview "$RUN" failed
     END=`now`
     mkdir -p "$PUBDIRJIG"/$OUTARCH
-    echo -e "start=$START\nend=$END\nerror=1\nlogfile=$RUN\n" > "$PUBDIRJIG"/$OUTARCH/$TRACEFILE
+    echo -e "start=$START\nend=$END\nerror=1\nlogfile=$RUN\n" > $TRACEFILE
     exit 1
 fi

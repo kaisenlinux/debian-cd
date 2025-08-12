@@ -2,16 +2,19 @@
 #
 # Helper for image creation
 #
+
+# Pull in the core settings for all builds
+. settings.sh
+. weekly.sh
+. common.sh
+
 PUBDIRJIG=$1
 RSYNC_TARGET=$2
 ARCH=$3
-FIRMWARE=$4
 
-LOG=~/build.${CODENAME}/log/$ARCH.iso_run
 HOSTNAME=`hostname -f`
 LOCK=~/iso_run.lock
-START=`date -u +%H:%M:%S`
-. $TOPDIR/common.sh
+START=$(now)
 
 # Check to see if another sync is in progress
 if lockfile -! -l 43200 -r-1 "$LOCK"; then  
@@ -20,15 +23,15 @@ if lockfile -! -l 43200 -r-1 "$LOCK"; then
 fi
 trap "rm -f $LOCK > /dev/null 2>&1" exit  
 
-COPY_START=`date -u +%H:%M:%S`
-
-rm -f $LOG
+COPY_START=$(now)
 
 # Poor man's rsync, but with some local optimisations
 copy_files() {
     SRC=$1
     TARGET=$2
     ARCHES=$3
+
+    echo "Copying files for $ARCHES from $SRC to $TARGET"
 
     DISKTYPES="cd dvd bd dlbd 16G"
     DIRTYPES="iso jigdo list"
@@ -45,7 +48,7 @@ copy_files() {
         for DISKTYPE in $DISKTYPES; do
             for DIRTYPE in $DIRTYPES; do
 		if [ -d $ARCH/$DIRTYPE-$DISKTYPE ]; then
-                    mkdir -p -m775 $TARGET/$ARCH.tmp/$DIRTYPE-$DISKTYPE
+                    mkdir -pv -m775 $TARGET/$ARCH.tmp/$DIRTYPE-$DISKTYPE
 		fi
             done
         done
@@ -57,7 +60,7 @@ copy_files() {
 	    -o -name '*.iso' \
 	    -o -name '*.torrent' \
 	    -o -name '*.list.gz' -o -name '*SUMS*' | \
-            xargs tar cf - | (cd $TARGET/$ARCH.tmp/ && tar xvf -) >> $LOG
+            xargs tar cf - | (cd $TARGET/$ARCH.tmp/ && tar xvf -)
 	
 	if [ "$RELEASE_BUILD"x = ""x ] ; then
 	    # Only populate the HEADER.html file for regular weekly
@@ -67,16 +70,18 @@ copy_files() {
 		> $TARGET/$ARCH.tmp/HEADER.html
 	fi
 
-	mkdir -p $TARGET/$ARCH.tmp/log/$DATE
-	cp *.log $TARGET/$ARCH.tmp/log/$DATE
-	ln -sf $DATE $TARGET/$ARCH.tmp/log/success
+	mkdir -pv $TARGET/$ARCH.tmp/log/$DATE
+	echo "Copying logfiles from $PWD to $TARGET/$ARCH.tmp/log/$DATE:"
+	cp -v $PWD/*.log $TARGET/$ARCH.tmp/log/$DATE
+	ln -sfv $DATE $TARGET/$ARCH.tmp/log/success
 	
 	# Now clean up any directories without any real content
 	# (i.e. empty dir, or just containing checksum files)
 	for dir in $TARGET/$ARCH.tmp/*-* ; do
 	    num=`ls -l $dir | grep -v -e SUMS -e total | wc -l`
 	    if [ $num = 0 ] ; then 
-		rm -rf $dir
+		echo "Removing empty dir $dir"
+		rm -rvf $dir
 	    fi
 	done	
 
@@ -88,7 +93,7 @@ copy_files() {
 
 copy_files $PUBDIRJIG $RSYNC_TARGET $ARCH
 
-echo "$START: Starting $ARCH sync from $PUBDIRJIG to $RSYNC_TARGET" >> $LOG
+echo "$START: Starting $ARCH sync from $PUBDIRJIG to $RSYNC_TARGET"
 if [ -e $RSYNC_TARGET/$ARCH ] ; then
     mv -f $RSYNC_TARGET/$ARCH $RSYNC_TARGET/$ARCH.old
 fi
@@ -100,22 +105,39 @@ mkdir -p $RSYNC_TARGET/trace
 date -u > $RSYNC_TARGET/trace/cdimage.debian.org
 
 # Generate the HEADER.html files in the subdirectories
-~/build.${CODENAME}/generate_headers ~/build.${CODENAME}/HEADER.html.in $RSYNC_TARGET/$ARCH $ARCH $FIRMWARE
+~/build.${CODENAME}/generate_headers ~/build.${CODENAME}/HEADER.html.in $RSYNC_TARGET/$ARCH $ARCH
 
-END=`date -u +%H:%M:%S`
+END=$(now)
 echo "$ARCH synced across to $RSYNC_TARGET; started at $START, copying started at $COPY_START, ended at $END"
 
-# If we're on casulana, push things to pettersson here
-if [ $(hostname) = casulana ]; then
-    START=`date -u +%H:%M:%S`
-    PETOUT=${RSYNC_TARGET##${OUT_BASE}/}
-    echo "$START: Starting $ARCH sync from $RSYNC_TARGET/$ARCH to pettersson" >> $LOG
-    (cd $RSYNC_TARGET/$ARCH && find . -name '*.iso' > .iso-wanted)
-    rsync_to_pettersson $RSYNC_TARGET/$ARCH/ ${PETOUT}/$ARCH/ '--exclude *.iso'
-    rsync_to_pettersson $RSYNC_TARGET/trace/ ${PETOUT}/trace/
-    publish_on_pettersson ${PETOUT}/$ARCH ${PETOUT}/trace
-    END=`date -u +%H:%M:%S`
-    echo "$RSYNC_TARGET/$ARCH synced across to pettersson; started at $START, ended at $END"
-fi
+case $(hostname) in
+    pettersson*)
+	ISO_OPTIONS='--exclude .iso-wanted'
+	;;
+    *)
+	ISO_OPTIONS='--exclude *.iso'
+	;;
+esac
 
-echo "$END: Finished" >> $LOG
+# Publish the image
+# If we're on casulana, this will push things to umu.se via rsync
+# over ssh; on pettersson* we use the same script but no ssh to make
+# things as similar as possible
+SYNC_START=$(now)
+PETOUT=${RSYNC_TARGET##${OUT_BASE}/}
+echo "$START: Starting $ARCH sync from $RSYNC_TARGET/$ARCH to umu:${PETOUT}/$ARCH"
+(cd $RSYNC_TARGET/$ARCH && find . -name '*.iso' > .iso-wanted)
+rsync_to_umu $RSYNC_TARGET/$ARCH/ ${PETOUT}/$ARCH/ "$ISO_OPTIONS"
+rsync_to_umu $RSYNC_TARGET/trace/ ${PETOUT}/trace/
+publish_at_umu ${PETOUT}/$ARCH ${PETOUT}/trace
+SIZE=$(du -s -BM $ISO_OPTIONS $RSYNC_TARGET/$ARCH/ | awk '{gsub("M","",$1); print $1}')
+SYNC_END=$(now)
+TIME_TAKEN=$(calc_time $SYNC_START $SYNC_END)
+echo "$RSYNC_TARGET/$ARCH synced across to umu; started at $SYNC_START, ended at $SYNC_END; transferred $SIZE MB in $TIME_TAKEN"
+
+case $ARCH in
+    amd64|arm64) trigger_openqa $PETOUT "$(debversion)" ${DATE_BUILD/-/-w-} $ARCH ;;
+esac
+
+END=$(now)
+echo "$END: Finished"

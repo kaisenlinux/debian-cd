@@ -7,57 +7,74 @@ OUT="$4"
 
 echo "DONEDONE" > $BDIR/DONE
 awk -v max_size=$MAX_PKG_SIZE '
-	/^Package:/ {
-				  srcname=$2
-				  srcs_done++
-				}
+        /^Package:/ {
+            srcname=$2
+            srcs_done++
+        }
 
-	/^Section: non-free/ {
-				  component[srcname]="non-free"
-				  next
-				}
+        /^Version:/ {
+            version=$2
+            # Cannot cope with : in output
+            gsub(":", "%", version)
+            if (srcname in versions) {
+                versions[srcname]=sprintf("%s:%s", versions[srcname], version)
+            } else {
+                versions[srcname]=version
+            }
+            next
+        }
 
-	/^Section: non-free-firmware/ {
-				  component[srcname]="non-free-firmware"
-				  next
-				}
+        /^Section: non-free/ {
+            component[srcname]="non-free"
+            next
+        }
 
-	/^Section: contrib/ {
-				  component[srcname]="contrib"
-				  next
-				}
+        /^Section: non-free-firmware/ {
+            component[srcname]="non-free-firmware"
+            next
+        }
 
-	/^Section:/ {
-				  component[srcname]="main"
-				  next
-				}
+        /^Section: contrib/ {
+            component[srcname]="contrib"
+            next
+        }
 
-	/^DONEDONE/ {
-				  parsed=1
-				  next
-				}
+        /^Section:/ {
+            component[srcname]="main"
+            next
+        }
 
-    /^Files:/ {
-                  in_files = 1
-                  next
+        /^DONEDONE/ {
+            parsed=1
+            next
+        }
+
+        /^Files:/ {
+            in_files = 1
+            next
+        }
+
+        /^ / {
+            if (in_files) {
+                size[srcname]+=$2
+                sizes[srcname, version]+=$2
+                next
+            }
+        }
+
+        /.*/ {
+            in_files = 0
+            if (parsed) {
+                if (size[$0] > max_size) {
+                    printf("source:%s:%s-SRCTOOBIG\n", component[$0], $0)
+                } else {
+                    num_versions = split(versions[$0], vers_this, ":")
+                    for(i = 1; i <= num_versions; i++) {
+                        printf("source:%s:%s:%s:%s\n", component[$0], $0, sizes[$0, vers_this[i]], vers_this[i])
+                    }
                 }
-    /^ / {
-                  if (in_files) {
-                      size[srcname]+=$2
-                      next
-                  }
-                }
-
-	/.*/        {
-                    in_files = 0
-				    if (parsed) {
-                        if (size[$0] > max_size) {
-				           printf("source:%s:%s-SRCTOOBIG\n", component[$0], $0)
-                        } else {
-				           printf("source:%s:%s\n", component[$0], $0)
-                        }
-					}
-				}
+            }
+       }
 ' $ADIR/$CODENAME-source/apt-state/lists/*Sources $BDIR/DONE $IN > $BDIR/list.mid
 
 if [ "$NONFREE"x = "1"x ] ; then

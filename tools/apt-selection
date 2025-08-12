@@ -24,8 +24,10 @@ fi
 
 if [ $ARCH = "source" ] ; then
 	ADEB="deb-src"
+	ALLVERSIONS=1
 else
 	ADEB="deb"
+	ALLVERSIONS=0
 fi
 
 if [ "$USE_BP"x = "1"x ] ; then
@@ -38,7 +40,7 @@ options=" -q -o Dir::State::status=$APTTMP/$THIS_PKGSET/status \
 		  -o Dir::State=$APTTMP/$THIS_PKGSET/apt-state/ \
 		  -o Dir::Cache=$APTTMP/$THIS_PKGSET/apt-cache/ \
 		  -o Dir::Etc=$APTTMP/$THIS_PKGSET/apt/ \
-		  -o APT::Cache::AllVersions=0 \
+		  -o APT::Cache::AllVersions=$ALLVERSIONS \
 		  -o APT::Cache::ShowVersion=1 \
 		  -o APT::Architecture=$ARCH \
 		  -o APT::Architectures::=$ARCH \
@@ -136,6 +138,9 @@ if [ "$1" = "update" ] || [ "$1" = "check" ]; then
 	exit $?
 elif [ "$1" = "cache" ]; then
 	shift
+	if [ "$1" = "showsrc" ]; then
+		options="$options --only-source"
+	fi
 	apt-cache $options $@
 	exit $?
 elif [ "$1" = "deselected" ]; then

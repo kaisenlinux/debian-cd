@@ -67,61 +67,6 @@ calc_time () {
     }'
 }
 
-build_started () {
-    export BUILDNAME=$1
-    BUILDS_RUNNING="$BUILDS_RUNNING $BUILDNAME"
-    export ${BUILDNAME}START=`now`
-}
-
-build_finished () {
-    ARCH="$1"
-    BUILDNAME="$2"
-    BUILDNAMESTART="${BUILDNAME}START"
-    start=${!BUILDNAMESTART}
-
-    . $PUBDIRJIG/$ARCH/$BUILDNAME-trace
-
-    time_spent=`calc_time $start $end`
-    echo "  $ARCH $BUILDNAME build started at $start, ended at $end (took $time_spent), error $error"
-    if [ $error -ne 0 ] ; then
-        arch_error="$arch_error "$BUILDNAME"FAIL/$error/$end/$logfile"
-    fi
-    case $BUILDNAME in
-	*FIRMWARE*)
-	    mkdir -p $PUBDIRJIG-firmware/$ARCH
-	    cp log/$logfile $PUBDIRJIG-firmware/$ARCH/$BUILDNAME.log
-	    ;;
-	*)
-	    mkdir -p $PUBDIRJIG/$ARCH
-	    cp log/$logfile $PUBDIRJIG/$ARCH/$BUILDNAME.log
-	    ;;
-    esac
-}
-
-catch_parallel_builds () {
-    # Catch parallel builds here                                                                                               
-    while [ "$BUILDS_RUNNING"x != ""x  ] ; do
-	BUILDS_STILL_RUNNING=""
-	for BUILDNAME in $BUILDS_RUNNING; do
-            if [ -e $PUBDIRJIG/$arch/$BUILDNAME-trace ] ; then
-		build_finished $arch $BUILDNAME
-            else
-		BUILDS_STILL_RUNNING="$BUILDS_STILL_RUNNING $BUILDNAME"
-            fi
-	done
-	BUILDS_RUNNING=$BUILDS_STILL_RUNNING
-	if [ "$BUILDS_RUNNING"x != ""x  ] ; then
-            sleep 1
-	fi
-    done
-    if [ "$arch_error"x = ""x ] ; then
-	arch_error="none"
-    fi
-    arch_end=`now`
-    arch_time=`calc_time $arch_start $arch_end`
-    echo "$arch build started at $arch_start, ended at $arch_end (took $arch_time), error(s) $arch_error"
-}
-
 # Slightly complicated setup
 # iso-*   dirs have checksums for ISO files only
 # bt-*    dirs have checksums for ISO and torrrent files only
@@ -188,16 +133,6 @@ catch_live_builds () {
 
 }
 
-arch_has_firmware () {
-    arch=$1
-    for arch1 in $ARCHES_FIRMWARE; do
-        if [ "$arch" = "$arch1" ] ; then
-	    return 0
-	fi
-    done
-    return 1
-}
-
 get_archive_serial () {
     trace_file="$MIRROR/project/trace/ftp-master.debian.org"
     if [ -f "$trace_file" ]; then
@@ -207,15 +142,88 @@ get_archive_serial () {
     fi
 }
 
-rsync_to_pettersson () {
+rsync_to_umu () {
     LOCAL=$1
     REMOTE=$2
     OPTIONS="$3"
-    rsync -az --delete $OPTIONS $LOCAL sync-to-pettersson:$REMOTE
+    case $(hostname) in
+	pettersson*)
+	    rsync -a --delete $OPTIONS $LOCAL /mnt/nfs-cdimage/.incoming/$REMOTE
+	    ;;
+	*)
+	    rsync -az --delete $OPTIONS $LOCAL sync-to-umu:$REMOTE
+	    ;;
+    esac
 }
 
-publish_on_pettersson () {
+publish_at_umu () {
     TARGETS="$@"
-    echo "$TARGETS" | ssh publish-on-pettersson ./bin/receive_from_casulana
+    case $(hostname) in
+	pettersson*)
+	    echo "$TARGETS" | ~/bin/publish_from_casulana
+	    ;;
+	*)
+	    echo "$TARGETS" | ssh publish-at-umu ./bin/publish_from_casulana
+	    ;;
+    esac
 }
 
+check_variables () {
+    for VAR in $@; do
+	if [ "${!VAR}"x = ""x ]; then
+	    echo "$BUILD: required variable $VAR is unset; ABORT"
+	    exit 1
+	fi
+    done
+}
+
+# helper for trigger_openqa() to avoid depending on openqa-client
+openqa_cli_api_isos() {
+    OPENQA_HOST=$1; shift
+    if [ -x /usr/bin/openqa-cli ]; then
+        openqa-cli api --host https://$OPENQA_HOST -X POST isos "$@"
+    else
+        OPENQA_TOKEN=images-team-openqa-trigger:$(sed -n -E '/\['$OPENQA_HOST'\]/,/^$/s/^key *= *//p' $HOME/.config/openqa/client.conf):$(sed -n -E '/\['$OPENQA_HOST'\]/,/^$/s/^secret *= *//p' $HOME/.config/openqa/client.conf)
+        curl -sS -u $OPENQA_TOKEN -X POST $(
+                for i in "$@"; do printf ' -d %s' "$i"; done
+            ) https://$OPENQA_HOST/api/v1/isos
+    fi
+    echo
+}
+
+debversion() {
+    # This outputs the value set for DEBVERSION in the current config file
+    awk -F'[="]+' '!/#/ && /DEBVERSION=/{v=$2};END{print v}' "${CONF:-$TOPDIR/CONF.sh}"
+}
+
+trigger_openqa () {
+    IMAGE_DIR=$1;  shift # e.g. daily-builds/sid_d-i/20230601-1 / weekly-builds / .trixie_di_alpha1
+    DEB_VER=$1;    shift # e.g. testing / trixie-DI-alpha1
+    DATE_BUILD=$1; shift # e.g. 20230601-1
+    DEB_ARCHS=$1;  shift # e.g. amd64,arm64
+    # we probably also need a parameter to use in place of 'netinst' at some point
+
+    for DEB_ARCH in ${DEB_ARCHS/,/ }; do
+        case "$DEB_ARCH" in
+            amd64) OQA_ARCH=x86_64 ;;
+            arm64) OQA_ARCH=aarch64 ;;
+            *)     OQA_ARCH="$DEB_ARCH" ;;
+        esac
+
+        ISO_URL="https://cdimage.debian.org/images/${IMAGE_DIR}/${DEB_ARCH}/iso-cd/debian-${DEB_VER}-${DEB_ARCH}-netinst.iso"
+
+        curl_result=$(curl --head --location --silent --write-out "%{http_code}" --output /dev/null "$ISO_URL")
+
+        if [ "200" = "$curl_result" ]; then
+            # this needs an openQA API key & secret to be in the running user's ~/.config/openqa/client.conf, in this form:
+            #   [openqa.debian.net]
+            #   key = XXXXXXXXXXXXXXXX
+            #   secret = YYYYYYYYYYYYYYYY
+            openqa_cli_api_isos openqa.debian.net \
+                DISTRI=debian VERSION="${DEB_VER}" FLAVOR=netinst-iso ARCH="${OQA_ARCH}" BUILD="${DATE_BUILD}" \
+                ISO_URL="$ISO_URL" ISO="${DATE_BUILD}-debian-${DEB_VER}-${DEB_ARCH}-netinst.iso"
+        else
+            printf "ERROR: ISO for arch=%s not found. http_resp=[%s] url='%s'\n" "$DEB_ARCH" "$curl_result" "$ISO_URL"  >&2
+        fi
+    done
+}

@@ -116,10 +116,10 @@ for image in $BOOT_IMAGES; do
             cp "${LOCALDEBS:-$MIRROR}/dists/$DI_DIST/local/installer-$THIS_ARCH/current/images/$image_in" "$image"
         elif [ ! "$DI_WWW_HOME" ];then
             if [ ! "$DI_DIR" ];then
-                DI_DIR="$MIRROR/dists/$DI_DIST/main/installer-$THIS_ARCH/current/images"
+                DI_DIR="$MIRROR/dists/$DI_DIST/main/installer-%ARCH%/current/images"
             fi
-	    DI_DIR_i386=$(echo $DI_DIR | sed 's/amd64/i386/g')
-	    DI_DIR_amd64=$(echo $DI_DIR | sed 's/i386/amd64/g')
+	    DI_DIR_i386=$(echo $DI_DIR | sed 's/%ARCH%/i386/g')
+	    DI_DIR_amd64=$(echo $DI_DIR | sed 's/%ARCH%/amd64/g')
 	    THIS_DI_DIR=DI_DIR_${THIS_ARCH}
             cp "${!THIS_DI_DIR}/$image_in" "$image"
         else
@@ -386,9 +386,9 @@ if [ "$LOGOPNG" ] ; then
 fi
 
 # Include sound firmware in initrd so they can be loaded before espeakup starts
-if [ -n "boot$N/isolinux/spk.cfg ]; then
+if [ -e "boot$N/isolinux/spk.cfg" ]; then
     install_firmwares_initrd "$CDDIR/$INSTALLDIR/initrd" "firmware-sof-signed"
-elif [ -n "boot$N/isolinux/spkgtk.cfg ]; then
+elif [ -e "boot$N/isolinux/spkgtk.cfg" ]; then
     install_firmwares_initrd "$CDDIR/$INSTALLDIR/gtk/initrd" "firmware-sof-signed"
 fi
 

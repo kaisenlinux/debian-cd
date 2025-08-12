@@ -25,23 +25,6 @@ else
     FILES=$DIR/$CD.volid
 fi
 
-NUM_CDS=`ls -1 $FILES | wc -l`
-
-last_minute_update () {
-    echo "  Last-minute updates:"
-    # Aaargh. Only now that we know how many CDs we're making can we
-    # fill in the TOTALNUM number in README.{html,txt} (and therefore also
-    # update the md5sum.txt entries for those files)
-    for file in README.html README.txt
-    do
-        echo "    $file"
-        OLD_MD5=`md5sum ./$file`
-        sed -i "s?TOTALNUM?$NUM_CDS?" $file
-        NEW_MD5=`md5sum ./$file`
-        sed -i "s?$OLD_MD5?$NEW_MD5?" md5sum.txt
-    done
-}
-
 # Grab the xorriso version and turn it into a number we can use
 xorriso_version() {
     $MKISOFS --version 2>&1 | awk '
@@ -56,10 +39,6 @@ do
     dir=${file%%.volid}
     n=${dir##$DIR/}
     dir=$DIR/CD$n
-
-    cd $dir
-    # Anything last-minute that can only be done now?
-    last_minute_update
 
     cd $dir/..
 

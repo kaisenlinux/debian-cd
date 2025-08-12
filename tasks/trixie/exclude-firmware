@@ -1,0 +1,45 @@
+/* 
+ * List the n-f-f packages that we do *not* want to include on media.
+ * Parsed using cpp, so C-style comments will work here.
+ */
+
+/* Always exclude these packages: only useful with non-free drivers
+   that we can't and won't ship */
+firmware-nvidia-gsp
+firmware-nvidia-tesla-gsp
+firmware-nvidia-tesla-535-gsp
+firmware-nvidia-tesla-550-gsp
+
+/* Always exclude this huge package, which is unlikely to be useful as
+   the relevant options are not enabled in the trixie kernel (that'd
+   be CONFIG_PRESTERA at least, plus CONFIG_PRESTERA_PCI possibly) */
+firmware-marvell-prestera
+
+/* If we don't have an arm* architecture, exclude these */
+#if !defined(ARCHarm64) && !defined(ARCHarmel) && !defined(ARCHarmhf)
+arm-trusted-firmware-tools
+crust-firmware
+firmware-qcom-soc
+firmware-samsung
+firmware-ti-connectivity
+raspi-firmware
+#endif
+
+/* If we don't have an x86 architecture, exclude these */
+#if !defined(ARCHamd64) && !defined(ARCHi386)
+amd64-microcode
+firmware-intel-sound
+firmware-sof-signed
+intel-microcode
+#endif
+
+/* Let's try and make the armhf netinst work by dropping some unlikely
+   firmware packages */
+#if defined(ARCHarmhf)
+firmware-amd-graphics
+firmware-intel-graphics
+firmware-ivtv
+firmware-ipw2x00
+firmware-iwlwifi
+firmware-nvidia-graphics
+#endif

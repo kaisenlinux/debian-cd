@@ -1,0 +1,26 @@
+/*
+ *
+ * This file will be used to build official Debian Edu full images
+ *
+ */
+
+#include <debian-installer+kernel>
+
+#include <debian-edu>
+#include <debian-edu-full>
+
+/*
+ * Please note: the libpam-krb5, dnsmasq and icinga2-ido-mysql packages are
+ * added here because they are installed via scripts during system setup
+ * (as opposed to be installed automatically as Recommends). Also, the winbind,
+ * freeradius and freeradius-krb5 packages have been added in case someone wants
+ * to install and configure the freeRADIUS server in offline mode (via a script
+ * shipped with the debian-edu-config package). So the BD image needs all those.
+ * Revised: 2025-02-07 (due to #601203 having been fixed some time ago)
+ */
+dnsmasq
+icinga2-ido-mysql
+libpam-krb5
+freeradius
+freeradius-krb5
+winbind

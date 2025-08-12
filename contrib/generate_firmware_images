@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -e
+# set -e
 
 TOPDIR=$(dirname $0)
 if [ "$TOPDIR" = "." ] ; then
@@ -8,50 +8,80 @@ if [ "$TOPDIR" = "." ] ; then
 fi
 export TOPDIR
 
-. $TOPDIR/CONF.sh
+if [ "$RELEASE_BUILD"x != ""x ] ; then
+    . $CONF
+    OUT=${OUT_BASE}/.${RELEASE_BUILD}/firmware
+else
+    . $TOPDIR/CONF.sh
+    OUT=${OUT_BASE}/unofficial/non-free/firmware
+fi
 . $TOPDIR/settings.sh
 . $TOPDIR/common.sh
 
-OUT=${OUT_BASE}/unofficial/non-free/firmware
-RELEASE=$1
+# Allow callers to over-ride the build target, e.g. to build for sid
+if [ "$1"x != ""x ]; then
+    export CODENAME=$1
+fi
 
-if [ "$RELEASE"x = ""x ] ; then
+BUILD="firmware_$CODENAME"
+DRYRUN_WAIT=0.1
+if [ "$DRYRUN"x != ""x ]; then
+    echo "Dry-run $0: BUILD $BUILD"
+    if [ $DRYRUN != count ]; then
+	sleep $DRYRUN_WAIT
+    fi
+    exit 0
+fi
+
+if [ "$CODENAME"x = ""x ] ; then
     echo "Need to know what to produce!"
     exit 1
 fi
 
+lockfile -! -l 43200 -r-1 $BUILDS_LOG.lock
+echo "$BUILD" >> $BUILDS_LOG
+BUILDNUM=$(wc -l < $BUILDS_LOG)
+rm -f $BUILDS_LOG.lock
+
+START=$(now)
+echo "$BUILDNUM/$NUM_BUILDS: Starting $BUILD build at $START"
+
 # Do stuff here!
-export TDIR=/srv/cdbuilder.debian.org/dst/deb-cd/tmp/firmware
+export TDIR=$(mktemp -d /srv/cdbuilder.debian.org/dst/deb-cd/tmp/firmware-$CODENAME.XXXXX)
 export BASEDIR=$TOPDIR/debian-cd
 mkdir -p $TDIR
-fakeroot $BASEDIR/tools/make-firmware-image $MIRROR $RELEASE $TDIR
+fakeroot $BASEDIR/tools/make-firmware-image $MIRROR $CODENAME $TDIR \
+	 > ~/build/log/$CODENAME-firmware-image.log 2>&1
+ret=$?
 
-DATE=`date +%Y%m%d`
-mkdir -p $OUT/$RELEASE/$DATE
-mv $TDIR/firmware*.* $TDIR/*SUMS $OUT/$RELEASE/$DATE/
+if [ $ret = 0 ]; then
 
-if [ "$RELEASE_BUILD"x = ""x ] ; then
-    echo "Signing firmware checksums files using the automatic key"
-    ~/build.${CODENAME}/sign-images $OUT/$RELEASE/$DATE ""
-fi
-
-if [ $(hostname) = casulana ]; then
-    # Sync to pettersson
-    rsync_to_pettersson ${OUT_BASE}/unofficial/non-free/firmware/$RELEASE/${DATE}/ unofficial/non-free/firmware/${RELEASE}/${DATE}/
-    publish_on_pettersson unofficial/non-free/firmware/${RELEASE}/${DATE}/
-else
-    # Update the current link, and delete the old surplus builds. Keep up
-    # to 3
-    cd $OUT/$RELEASE
-    rm -f current
-    ln -sf $DATE current
-
-    echo "Removing old firmware directories:"
-    NUM=`ls -d 20*/ 2>/dev/null |wc -l`
-    NUM=$(($NUM-6))
-    if [ "$NUM" -gt "0" ] ; then
-	REMOVE=`ls -1d 20* 2>/dev/null|head -n $NUM`
-	echo "  $REMOVE"
-	rm -rf $REMOVE
+    if [ "$RELEASE_BUILD"x = ""x ] ; then
+	DATE=`date +%Y%m%d`
+	mkdir -p $OUT/$CODENAME/$DATE
+	mv $TDIR/firmware*.* $TDIR/*SUMS $OUT/$CODENAME/$DATE/
+	echo "  $BUILD: Signing firmware checksums files using the automatic key"
+	~/build/sign-images $OUT/$CODENAME/$DATE ""
+	RSYNC_TARGET=$OUT/$CODENAME/$DATE
+    else
+	rm -rf $OUT
+	mkdir -p $OUT
+	mv $TDIR/firmware*.* $TDIR/*SUMS $OUT
+	RSYNC_TARGET=$OUT
     fi
+
+    # Sync to umu.se
+    PETOUT=${RSYNC_TARGET##${OUT_BASE}/}
+    rsync_to_umu $RSYNC_TARGET/ $PETOUT/
+    publish_at_umu $PETOUT
 fi
+
+END=$(now)
+SPENT=$(calc_time $START $END)
+if [ $ret = 0 ]; then
+    echo "  $BUILD finished successfully (started at $START, ended at $END, took $SPENT)"
+else
+    echo "  $BUILD failed (started at $START, ended at $END, took $SPENT)"
+fi
+
+rm -rf $TDIR

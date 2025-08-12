@@ -22,6 +22,7 @@ use Getopt::Long;
 use YAML::XS;
 
 my $SOF = 'firmware-sof-signed';
+my $INTEL = 'firmware-intel-sound';
 
 my $output_dir = '.';
 my $verbose;
@@ -81,22 +82,29 @@ sub generate_patterns_from_components {
 # Workaround for firmware-sof-signed, which doesn't advertise firmware
 # files it might need through the MODULE_FIRMWARE() macro (meaning no
 # chance to generate DEP-11 info from there): alias info manually
-# extracted on 2023-01-18 (linux-image-6.1.0-1-amd64, 6.1.4-1).
+# extracted on 2025-05-14 (linux-image-6.12.29-amd64, 6.12.29-1).
+#
+# Extended to firmware-intel-sound, for similar reasons. That one ships some
+# metadata, listing the supported modules and the list of firmware files. The
+# former is used for the egrep call below (firmware-intel-sound, 20250410-2).
 #
 # XXX: To be kept in sync! (#1029175)
 sub generate_patterns_for_firmware_sof_intel_workaround {
+    my $pkgname = shift;
+
     # Extract on amd64, from the installed package, with the following
     # command. Note that descending under intel/ would lead to no
     # aliases, so stick to the top-level directory for sof:
     #
-    #     for x in $(dpkg -L linux-image-6.1.0-1-amd64 | egrep '(kernel/sound/soc/sof/.*\.ko|/snd-soc-.*sof.*\.ko)$'); do /usr/sbin/modinfo $x | awk '/^alias:/ { print $2 }'; done | sort -u
+    #     for x in $(dpkg -L linux-image-6.12.29-amd64 | egrep '(kernel/sound/soc/sof/.*\.ko|/snd-soc-.*sof.*\.ko).xz$'); do /usr/sbin/modinfo $x | awk '/^alias:/ { print $2 }'; done | sort -u
 
     my @sof_aliases = qw(
+        auxiliary:snd_sof.acp-probes
         auxiliary:snd_sof.hda-probes
+        pci:v00001022d000015E2sv*sd*bc*sc*i*
         pci:v00008086d000002C8sv*sd*bc*sc*i*
         pci:v00008086d000006C8sv*sd*bc*sc*i*
         pci:v00008086d0000119Asv*sd*bc*sc*i*
-        pci:v00008086d00001A98sv*sd*bc*sc*i*
         pci:v00008086d00003198sv*sd*bc*sc*i*
         pci:v00008086d000034C8sv*sd*bc*sc*i*
         pci:v00008086d000038C8sv*sd*bc*sc*i*
@@ -115,46 +123,91 @@ sub generate_patterns_for_firmware_sof_intel_workaround {
         pci:v00008086d000051CFsv*sd*bc*sc*i*
         pci:v00008086d000054C8sv*sd*bc*sc*i*
         pci:v00008086d00005A98sv*sd*bc*sc*i*
+        pci:v00008086d00007728sv*sd*bc*sc*i*
         pci:v00008086d00007A50sv*sd*bc*sc*i*
         pci:v00008086d00007AD0sv*sd*bc*sc*i*
         pci:v00008086d00007E28sv*sd*bc*sc*i*
+        pci:v00008086d00007F50sv*sd*bc*sc*i*
         pci:v00008086d00009D70sv*sd*bc*sc*i*
         pci:v00008086d00009D71sv*sd*bc*sc*i*
         pci:v00008086d00009DC8sv*sd*bc*sc*i*
         pci:v00008086d0000A0C8sv*sd*bc*sc*i*
         pci:v00008086d0000A348sv*sd*bc*sc*i*
         pci:v00008086d0000A3F0sv*sd*bc*sc*i*
+        pci:v00008086d0000A828sv*sd*bc*sc*i*
+        pci:v00008086d0000E328sv*sd*bc*sc*i*
+        pci:v00008086d0000E428sv*sd*bc*sc*i*
+        platform:adl_cs35l41
+        platform:adl_cs42l42_def
+        platform:adl_da7219_def
         platform:adl_es83x6_c1_h02
-        platform:adl_max98390_rt5682
+        platform:adl_lt6911_hdmi_ssp
         platform:adl_mx98357_rt5682
-        platform:adl_mx98360_rt5682
-        platform:adl_mx98373_rt5682
-        platform:adl_rt1019_rt5682s
-        platform:adl_rt5682
-        platform:cml_rt1015_rt5682
-        platform:jsl_rt5682_mx98360
-        platform:jsl_rt5682_rt1015
-        platform:jsl_rt5682_rt1015p
-        platform:mtl_mx98357_rt5682
+        platform:adl_nau8825_def
+        platform:adl_rt1019p_8825
+        platform:adl_rt5682_c1_h02
+        platform:adl_rt5682_def
+        platform:arl_es83x6_c1_h02
+        platform:arl_lt6911_hdmi_ssp
+        platform:arl_rt5682_c1_h02
+        platform:cml_da7219_def
+        platform:cml_rt5682_def
+        platform:glk_cs4242_mx98357a
+        platform:glk_da7219_def
+        platform:glk_rt5682_def
+        platform:icl_rt5682_def
+        platform:jsl_cs4242_mx98360a
+        platform:jsl_da7219_def
+        platform:jsl_rt5682_def
+        platform:mtl_cs42l42_def
+        platform:mtl_da7219_def
+        platform:mtl_es83x6_c1_h02
+        platform:mtl_lt6911_hdmi_ssp
+        platform:mtl_nau8825_def
+        platform:mtl_rt5682_c1_h02
+        platform:mtl_rt5682_def
+        platform:rpl_cs42l42_def
+        platform:rpl_da7219_def
+        platform:rpl_es83x6_c1_h02
+        platform:rpl_lt6911_hdmi_ssp
+        platform:rpl_mx98357_rt5682
+        platform:rpl_nau8825_def
+        platform:rpl_rt5682_c1_h02
+        platform:rpl_rt5682_def
         platform:sof-audio
         platform:sof-essx8336
         platform:sof_rt5682
         platform:sof_sdw
-        platform:tgl_mx98357_rt5682
-        platform:tgl_mx98373_rt5682
-        platform:tgl_rt1011_rt5682
+        platform:sof_ssp_amp
+        platform:tgl_rt1308_hdmi_ssp
+        platform:tgl_rt5682_def
     );
 
-    print STDERR "  deploying manual workaround for $SOF\n"
+    # Firmware metadata says two modules are supported, snd-soc-sst-acpi and
+    # snd-intel-sst-acpi. The former cannot be found in v6.15-rc7 or v6.12.29,
+    # so let's pretend it doesn't exist but keep the grep just in case it pops
+    # up later.
+    #
+    #     for x in $(dpkg -L linux-image-6.12.29-amd64 | egrep '(snd-soc-sst-acpi|snd-intel-sst-acpi)\.ko\.xz$'); do /usr/sbin/modinfo $x | awk '/^alias:/ { print $2 }'; done | sort -u
+    my @intel_aliases = qw(
+        acpi*:80860F28:*
+        acpi*:808622A8:*
+        acpi*:LPE0F28:*
+        sst
+    );
+
+    print STDERR "  deploying manual workaround for $pkgname\n"
         if $verbose;
 
-    my $sof_file = $output_dir . "/" . $SOF . ".patterns";
-    printf STDERR "  writing %4d entries to %s (using the workaround)\n",
-        (scalar @sof_aliases),
-        $sof_file;
+    my @aliases = ($pkgname eq 'firmware-sof-signed') ? @sof_aliases : @intel_aliases;
 
-    write_file($sof_file,
-               format_alias(@sof_aliases));
+    my $workaround_file = $output_dir . "/" . $pkgname . ".patterns";
+    printf STDERR "  writing %4d entries to %s (using the workaround)\n",
+        (scalar @aliases),
+        $workaround_file;
+
+    write_file($workaround_file,
+               format_alias(@aliases));
 }
 
 
@@ -176,8 +229,8 @@ foreach my $components (@ARGV) {
 }
 
 # Only apply the workaround when relevant:
-generate_patterns_for_firmware_sof_intel_workaround()
-    if ! $done and $pkgname eq $SOF;
+generate_patterns_for_firmware_sof_intel_workaround($pkgname)
+    if ! $done and grep { $pkgname eq $_ } ($SOF, $INTEL);
 
 print STDERR "Done with package $pkgname\n"
     if $verbose;

@@ -41,14 +41,14 @@ unset UDEB_EXCLUDE      || true
 unset BASE_INCLUDE      || true
 unset BASE_EXCLUDE      || true
 #unset INSTALLER_CD      || true
-
+#under FORCE_FIRMWARE    || true
 
 # The debian-cd dir
 # Where I am (hoping I'm in the debian-cd dir)
 export BASEDIR=`pwd`
 
-# Building bookworm cd set ...
-export CODENAME=bookworm
+# Building trixie image set ...
+export CODENAME=trixie
 
 if [ ! "$DI_CODENAME" ]
 then
@@ -108,9 +108,22 @@ export APTTMP=$TDIR/apt
 # Do I want to have CONTRIB merged in the CD set
 export CONTRIB=1
 
+# Where should I look for non-free packages?
+export NONFREE_COMPONENTS="non-free-firmware"
+
 # Do I want to have NONFREE on a separate CD (the last CD of the CD set)
 # WARNING: Don't use NONFREE and EXTRANONFREE at the same time !
 # export EXTRANONFREE=1
+
+# Do I want to force (potentially non-free) firmware packages to be
+# placed on disc 1? Will make installation much easier if systems
+# contain hardware that depends on this firmware
+export FORCE_FIRMWARE=1
+
+# If we have non-free stuff included, 
+if [ "$NONFREE"x = "1"x ]; then
+    export OFFICIAL="Unofficial"
+fi
 
 # If you have a $MIRROR/dists/$CODENAME/local/binary-$ARCH dir with 
 # local packages that you want to put on the CD set then
@@ -141,6 +154,12 @@ export CONTRIB=1
 # them. This is useful if your destination directories are on a different
 # partition than your source files.
 # export COPYLINK=1
+
+# Choose the checksum algorithm used in jigdo and template
+# files. Older jigdo tools can only support md5; but we want to move
+# to sha256 as a better checksum. Depends on xorriso 1.5.3+ to support
+# sha256
+export JIGDO_CHECKSUM="sha256"
 
 # Options
 #export MKISOFS="$BASEDIR/../mkisofs/usr/bin/mkisofs"
@@ -317,3 +336,9 @@ if [ -d "/etc/ssl/ca-debian" ]; then
     export WGET_OPTS="--ca-directory /etc/ssl/ca-debian/"
 fi
 export WGET="wget $WGET_OPTS"
+
+# Run the make_image step in parallel? Specify the number of calls to
+# use in parallel here if desired. Don't go too high - this *will*
+# thrash your IO!
+export PARALLEL_MAKE_IMAGE=4
+

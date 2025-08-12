@@ -158,9 +158,7 @@
 # if !(defined(DISKTYPEBC) || defined(DISKTYPENETINST))
     which means that this disc is number DISKNUM of a set of TOTALNUM discs
 # endif
-# if OUTPUThtml
     .
-# endif
 # if TYPEbinary
     It contains programs ("binaries") for `ARCH' computers.</p>
 #  if ARCHia64 && !ARCHamd64

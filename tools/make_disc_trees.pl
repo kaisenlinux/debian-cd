@@ -93,7 +93,9 @@ $extranonfree = read_env('EXTRANONFREE', 0);
 $nonfree = read_env('NONFREE', 0);
 $contrib = read_env('CONTRIB', 0);
 $use_local = read_env('LOCAL', 0);
-	
+
+my $dep11 = read_env('DEP11', 1);
+
 my $list = "$tdir/list";
 my $bdir = "$tdir/$codename";
 my $log = "$bdir/make_disc_tree.log";
@@ -120,7 +122,6 @@ if ($backports) {
 
 my $disknum = 1;
 my $max_done = 0;
-my $size_check = "";
 
 # Constants used for space calculations
 my $MiB = 1048576;
@@ -145,7 +146,6 @@ my $pkgs_done = 0;
 my $size = 0;
 my $guess_size = 0;
 my @overflowpkg;
-my $mkisofs_check = "$mkisofs $mkisofs_base_opts -r -print-size -quiet";
 my $debootstrap_script = read_env('DEBOOTSTRAP_SCRIPT', "");
 
 chdir $bdir;
@@ -193,9 +193,10 @@ while (defined (my $pkg = <INLIST>)) {
         if ($disknum > $maxcds) {
             print LOG "Disk $disknum is beyond the configured MAXCDS of $maxcds; exiting now...\n";
             $max_done = 1;
+            $disknum--;
             last;
         }
-        print LOG "Starting new disc $disknum at " . `date` . "\n";
+        print LOG "Starting new disc $disknum at " . `date`;
         start_disc();
         print LOG "  Specified size: $diskdesc, $maxdiskblocks 2K-blocks maximum\n";
         print "  Placing packages into image $disknum\n";
@@ -225,9 +226,7 @@ while (defined (my $pkg = <INLIST>)) {
             $mkisofs_dirs = "";
         }
 
-        $size_check = "$mkisofs_check $mkisofs_opts $mkisofs_dirs";
-        $size=`$size_check $cddir`;
-        chomp $size;
+        $size = size_check($cddir, 1);
         $size += $hfs_extra;
         print LOG "CD $disknum: size is $size before starting to add packages\n";
 
@@ -238,11 +237,16 @@ while (defined (my $pkg = <INLIST>)) {
         # lists intersect and we should re-include some packages
         if (scalar @unexclude_packages && scalar @excluded_package_list) {
             foreach my $reinclude_pkg (@excluded_package_list) {
-                my ($arch, $component, $pkgname, $pkgsize) = split /:/, $reinclude_pkg;
+                my ($arch, $component, $pkgname, $pkgsize, $pkgversion) = split /:/, $reinclude_pkg;
+		$pkgversion = fixup_pkgversion($pkgversion);
                 foreach my $entry (@unexclude_packages) {
                     if (($pkgname =~ /^\Q$entry\E$/m)) {
                         print LOG "Re-including $reinclude_pkg due to match on \"\^$entry\$\"\n";
                         $guess_size = int($hfs_mult * add_packages($cddir, $reinclude_pkg));
+			if ($guess_size > $maxdiskblocks) {
+			    print LOG "$reinclude_pkg will never fit - it is $guess_size blocks against a disk size of $maxdiskblocks. ABORT\n";
+			    die "$reinclude_pkg will never fit - it is $guess_size blocks against a disk size of $maxdiskblocks. ABORT\n";
+			}
                         $size += $guess_size;
                         print LOG "CD $disknum: GUESS_TOTAL is $size after adding $reinclude_pkg\n";
                         $pkgs_this_cd++;
@@ -256,6 +260,10 @@ while (defined (my $pkg = <INLIST>)) {
             my $overflowpkg = pop @overflowlist;
             print LOG "Adding a package that failed on the last disc: $overflowpkg\n";
             $guess_size = int($hfs_mult * add_packages($cddir, $overflowpkg));
+	    if ($guess_size > $maxdiskblocks) {
+		print LOG "$overflowpkg will never fit - it is $guess_size blocks against a disk size of $maxdiskblocks. ABORT\n";
+		die "$overflowpkg will never fit - it is $guess_size blocks against a disk size of $maxdiskblocks. ABORT\n";
+	    }
             $size += $guess_size;
             print LOG "CD $disknum: GUESS_TOTAL is $size after adding $overflowpkg\n";
             $pkgs_this_cd++;
@@ -278,6 +286,10 @@ while (defined (my $pkg = <INLIST>)) {
     } else {
         $guess_size = int($hfs_mult * add_packages($cddir, $pkg));
         $size += $guess_size;
+	if ($guess_size > $maxdiskblocks) {
+	    print LOG "$pkg will never fit - it is $guess_size blocks against a disk size of $maxdiskblocks. ABORT\n";
+	    die "$pkg will never fit - it is $guess_size blocks against a disk size of $maxdiskblocks. ABORT\n";
+	}
         push (@pkgs_added, $pkg);
         print LOG "CD $disknum: GUESS_TOTAL is $size after adding $pkg\n";
         if (($size > $maxdiskblocks) ||
@@ -286,9 +298,7 @@ while (defined (my $pkg = <INLIST>)) {
             $count_since_last_check = 0;
             # Recompress files as needed before the size check
             find (\&recompress, "$cddir/dists");
-            print LOG "Running $size_check $cddir\n";
-            $size = `$size_check $cddir`;
-            chomp $size;
+	    $size = size_check($cddir, 0);
             print LOG "CD $disknum: Real current size is $size blocks after adding $pkg\n";
         }
         if ($size > $maxdiskblocks) {
@@ -298,8 +308,7 @@ while (defined (my $pkg = <INLIST>)) {
                 $guess_size = int($hfs_mult * add_packages("--rollback", $cddir, $pkg));
                 # Recompress files as needed before the size check
                 find (\&recompress, "$cddir/dists");
-                $size=`$size_check $cddir`;
-                chomp $size;
+		$size = size_check($cddir, 0);
                 print LOG "CD $disknum: Real current size is $size blocks after rolling back $pkg\n";
                 # Put this package first on the next disc
                 push (@overflowlist, $pkg);
@@ -332,6 +341,9 @@ if ($max_done == 0) {
 }
 
 print LOG "Finished: $pkgs_done packages placed\n";
+
+last_minute_update($disknum);
+
 print "Finished: $pkgs_done packages placed\n";
 system("date >> $log");
 
@@ -342,12 +354,67 @@ close(LOG);
 #  Local helper functions
 #
 #############################################
+
+# Ask mkisofs / genisoimage how big a tree is
+sub size_check {
+    my $cddir = shift;
+    my $verbose = shift;
+    my $mkisofs_check = "$mkisofs $mkisofs_base_opts -r -print-size -quiet";
+    my $cmdline = "$mkisofs_check $mkisofs_opts $mkisofs_dirs $cddir";
+
+    if ($verbose) {
+	print LOG "Running $cmdline\n";
+    }
+    $size = `$cmdline 2>/dev/null`;
+    chomp $size;
+    return $size;
+}
+
+# Only once we know how many CDs we're making can we fill in the
+# TOTALNUM number in README.{html,txt} (and therefore also update the
+# md5sum.txt entries for those files)
+sub last_minute_update {
+    my $total_disks = shift;
+
+    for (my $disknum = 1; $disknum <= $total_disks; $disknum++) {
+	my $cddir = "$bdir/CD$disknum";
+
+	chdir $cddir;
+
+	for my $upd ("README.html", "README.txt") {
+	    my $buf = "";
+	    print LOG "  Last-minute update of $cddir/$upd\n";
+	    open(README, "< $upd") or
+		die "Failed to open $upd for reading: $!\n";
+	    while (defined (my $line = <README>)) {
+		$line =~ s/TOTALNUM/$total_disks/g;
+		$buf .= $line
+	    }
+	    close(README);
+	    open(README, "> $upd") or
+		die "Failed to open $upd for writing: $!\n";
+	    print README $buf;
+	    close(README);
+	}
+
+	# Now update the md5sums.txt for the README files
+	open(MD5LIST, ">> md5sum.txt") or
+	    die "Failed to open md5sum.txt file: $!\n";
+	foreach my $file (glob "./README.*") {
+	    my ($md5, $size) = checksum_file($file, "md5");
+	    printf MD5LIST "%s  %s\n", $md5, $file;
+	}
+	close(MD5LIST);
+	chdir $bdir;
+    }
+}
+
 # Load up information about all the packages
 sub load_packages_cache {
     my $arch = shift;
     my @pkglist;
-    my @tmplist;
-    my ($p);
+    my %tmphash;
+    my ($p, $pkgversion);
     my $num_pkgs = 0;
 
     $ENV{'LC_ALL'} = 'C'; # Required since apt is now translated
@@ -358,8 +425,12 @@ sub load_packages_cache {
 
     while (defined (my $pkg = <INLIST>)) {
         chomp $pkg;
-        my ($junk, $component, $pkgname, $pkgsize) = split /:/, $pkg;
-        push @tmplist, $pkgname;
+        my ($junk, $component, $pkgname, $pkgsize, $pkgversion) = split /:/, $pkg;
+	# Store these in a hash and flatten to a list later, so that
+	# we get a unique set; otherwise, apt-cache source confusingly
+	# complains later if we have duplicate entries in the list of
+	# package... :-/
+	$tmphash{$pkgname} = 1;
     }
     close INLIST;
 
@@ -367,43 +438,63 @@ sub load_packages_cache {
     print LOG "Reading in package information for $arch:\n";
 
     $/ = ''; # Browse by paragraph
-    @pkglist = (grep (!/\/$codename-backports$/, @tmplist));
+    @pkglist = (grep (!/\/$codename-backports$/, sort(keys %tmphash)));
     while (@pkglist) {
         my (@pkg) = splice(@pkglist,0,200);
         if ($arch eq "source") {
             open (LIST, "$basedir/tools/apt-selection cache showsrc @pkg |")
                 || die "Can't fork : $!\n";
+	    while (defined($_ = <LIST>)) {
+		m/^Package: (\S+)/m and $p = $1;
+		m/^Version: (\S+)/m and $pkgversion = $1;
+		push @{$pkginfo{$arch}{$p}{$pkgversion}}, $_;
+		$num_pkgs++;
+	    }
+	    close LIST;
         } else {
+	    # Use a fixed "version" for binaries here - it makes it
+	    # easier to look things up later.
+	    $pkgversion = "<DEFAULT>";
             open (LIST, "$basedir/tools/apt-selection cache show @pkg |")
                 || die "Can't fork : $!\n";
-        }
-        while (defined($_ = <LIST>)) {
-            m/^Package: (\S+)/m and $p = $1;
-            push @{$pkginfo{$arch}{$p}}, $_;
-            $num_pkgs++;
-        }
-        close LIST;
+	    while (defined($_ = <LIST>)) {
+		m/^Package: (\S+)/m and $p = $1;
+		push @{$pkginfo{$arch}{$p}{$pkgversion}}, $_;
+		$num_pkgs++;
+	    }
+	    close LIST;
+	}
         print LOG "load_packages_cache: Read details of $num_pkgs packages for $arch\n";
     }
     print "  Done: Read details of $num_pkgs packages for $arch\n";
     if ($backports) {
 	$num_pkgs = 0;
-	@pkglist = (grep (/\/$codename-backports$/, @tmplist));
+	@pkglist = (grep (/\/$codename-backports$/, sort(keys %tmphash)));
 	while (@pkglist) {
 	    my (@pkg) = splice(@pkglist,0,200);
 	    if ($arch eq "source") {
 		open (LIST, "USE_BP=1 $basedir/tools/apt-selection cache showsrc @pkg |")
 		    || die "Can't fork : $!\n";
+		while (defined($_ = <LIST>)) {
+		    m/^Package: (\S+)/m and $p = $1;
+		    m/^Version: (\S+)/m and $pkgversion = $1;
+		    push @{$pkginfo{$arch}{"$p/$codename-backports"}{$pkgversion}}, $_;
+		    $num_pkgs++;
+		}
+		close LIST;
 	    } else {
+		# Use a fixed "version" for binaries here - it makes it
+		# easier to look things up later.
+		$pkgversion = "<DEFAULT>";
 		open (LIST, "USE_BP=1 $basedir/tools/apt-selection cache show @pkg |")
 		    || die "Can't fork : $!\n";
+		while (defined($_ = <LIST>)) {
+		    m/^Package: (\S+)/m and $p = $1;
+		    push @{$pkginfo{$arch}{"$p/$codename-backports"}{$pkgversion}}, $_;
+		    $num_pkgs++;
+		}
+		close LIST;
 	    }
-	    while (defined($_ = <LIST>)) {
-		m/^Package: (\S+)/m and $p = $1;
-		push @{$pkginfo{$arch}{"$p/$codename-backports"}}, $_;
-		$num_pkgs++;
-	    }
-	    close LIST;
 	    print LOG "load_packages_cache: Read details of $num_pkgs packages for $arch backports\n";
 	}
 	print "  Done: Read details of $num_pkgs packages for $arch backports\n";
@@ -492,7 +583,7 @@ sub load_descriptions {
 
 sub should_start_extra_nonfree {
     my $pkg = shift;
-    my ($arch, $component, $pkgname, $pkgsize) = split /:/, $pkg;
+    my ($arch, $component, $pkgname, $pkgsize, $pkgversion) = split /:/, $pkg;
 
     if ($extranonfree) {
 	foreach my $nf_comp (@nonfree_components) {
@@ -507,7 +598,7 @@ sub should_start_extra_nonfree {
 
 sub should_exclude_package {
     my $pkg = shift;
-    my ($arch, $component, $pkgname, $pkgsize) = split /:/, $pkg;
+    my ($arch, $component, $pkgname, $pkgsize, $pkgversion) = split /:/, $pkg;
     my $should_exclude = 0;
 
     foreach my $entry (@exclude_packages) {
@@ -542,6 +633,13 @@ sub check_base_installable {
 	my $p;
 	my $db_error = 0;
 	my $error_string = "";
+	my $kernel_name = "linux";
+
+	if ($arch =~ /hurd/) {
+		$kernel_name = "gnumach";
+	} elsif ($arch =~ /kfreebsd/) {
+		$kernel_name = "kfreebsd";
+	}
 
 	open (PLIST, $packages_file)
 		|| die "Can't open Packages file $packages_file : $!\n";
@@ -560,6 +658,19 @@ sub check_base_installable {
 		close PLIST;
 	}
 
+	# The system must have a kernel included. Check for that
+	# first.
+	my $found_kernel = 0;
+	foreach my $pkg (keys %on_disc) {
+		if ($pkg =~ /^$kernel_name-image-/) {
+			$found_kernel = 1;
+		}
+	}
+	if (! $found_kernel) {
+		$ok++;
+		print LOG "No $kernel_name-image-* package(s) found\n";
+	}
+
 	if (defined($ENV{'BASE_EXCLUDE'})) {
 		open (ELIST, $ENV{'BASE_EXCLUDE'})
 			|| die "Can't open base_exclude file $ENV{'BASE_EXCLUDE'} : $!\n";
@@ -570,7 +681,7 @@ sub check_base_installable {
 		close ELIST;
 	}
 		
-	open (DLIST, "debootstrap --arch $arch --print-debs $codename $tdir/debootstrap_tmp file:$mirror $debootstrap_script 2>/dev/null | tr ' ' '\n' |")
+	open (DLIST, "debootstrap --arch $arch --print-debs $codename $tdir/debootstrap_tmp file:$mirror $debootstrap_script 2>/dev/null | grep -v ^I: | tr ' ' '\n' |")
 		 || die "Can't fork debootstrap : $!\n";
 	while (defined($p = <DLIST>)) {
         if ($p =~ m/^E:/) {
@@ -768,12 +879,12 @@ sub get_disc_size {
         $maxdiskblocks = int(8500 * $MB / $blocksize) - $reserved;
         $diskdesc = "8.5GB DVD";
     } elsif ($chosen_disk eq "BD") {
-		# Useable capacity, found by checking some disks
-        $maxdiskblocks = 11230000 - $reserved;
+	# Leave some space for potential formatting/spares on BD
+	$maxdiskblocks = int(24000 * $MB / $blocksize) - $reserved;
         $diskdesc = "25GB BD";
     } elsif ($chosen_disk eq "DLBD") {
-		# Useable capacity, found by checking some disks
-        $maxdiskblocks = 23652352 - $reserved;
+	# Leave some space for potential formatting/spares on BD
+	$maxdiskblocks = int(48000 * $MB / $blocksize) - $reserved;
         $diskdesc = "50GB DLBD";
     } elsif ($chosen_disk =~ /STICK(\d+)GB/) {
         $maxdiskblocks = int($1 * $GB / $blocksize) - $reserved;
@@ -795,59 +906,69 @@ sub get_disc_size {
 }
 
 sub start_disc {
-	my $error = 0;
+    my $error = 0;
 
-	$error = system("$basedir/tools/start_new_disc $basedir $mirror $tdir $codename \"$archlist\" $disknum");
-	if ($error != 0) {
-		die "    Failed to start disc $disknum, error $error\n";
-	}
-
-	get_disc_size();
+    get_disc_size();
 
     print "Starting new \"$archlist\" $disktype $disknum at $basedir/$codename/CD$disknum\n";
     print "  Specified size for this image: $diskdesc, $maxdiskblocks 2K-blocks maximum\n";
-	# Grab all the early stuff, apart from dirs that will change later
-	print "  Starting the md5sum.txt file\n";
-	chdir $cddir;
-	system("find . -type f | grep -v -e ^\./\.disk -e ^\./dists | xargs md5sum >> md5sum.txt");
-	chdir $bdir;
 
-	$mkisofs_opts = "";
-	$mkisofs_dirs = "";
+    $error = system("$basedir/tools/start_new_disc $basedir $mirror $tdir $codename \"$archlist\" $disknum");
+    if ($error != 0) {
+	die "    Failed to start disc $disknum, error $error\n";
+    }
 
-    undef @exclude_packages;
-    undef @unexclude_packages;
+    # Grab all the early stuff, apart from dirs that will change later
+    print "  Starting the md5sum.txt file\n";
+    chdir $cddir;
+    system("find . -type f | grep -v -e ^\./\.disk -e ^\./dists -e ^\./README | xargs md5sum >> md5sum.txt");
+    chdir $bdir;
 
+    $mkisofs_opts = "";
+    $mkisofs_dirs = "";
+
+    @exclude_packages = ();
+    @unexclude_packages = ();
+
+    # Change of interface here - exclude/unexclude files are now a
+    # colon-separated list
     if (defined ($ENV{"EXCLUDE"})) {
-        my $excl_file = $ENV{"TASKDIR"} . "/" . $ENV{"EXCLUDE"};
-        print LOG "Adding excludes from $excl_file\n";
-        open (EXCLUDE_FILE, "< $excl_file") || die "Can't open exclude file $excl_file: $!\n";
-        while (defined (my $excl_pkg = <EXCLUDE_FILE>)) {
-            chomp $excl_pkg;
-            push(@exclude_packages, $excl_pkg);
-        }
-        close (EXCLUDE_FILE);
+	add_excludes_from_files($ENV{"EXCLUDE"}, "exclude", \@exclude_packages)
     }
     if (defined ($ENV{"EXCLUDE$disknum"})) {
-        my $excl_file = $ENV{"TASKDIR"} . "/" . $ENV{"EXCLUDE$disknum"};
-        print LOG "Adding excludes from $excl_file\n";
-        open (EXCLUDE_FILE, "< $excl_file") || die "Can't open exclude file $excl_file: $!\n";
-        while (defined (my $excl_pkg = <EXCLUDE_FILE>)) {
-            chomp $excl_pkg;
-            push(@exclude_packages, $excl_pkg);
-        }
-        close (EXCLUDE_FILE);
+	add_excludes_from_files($ENV{"EXCLUDE$disknum"}, "exclude", \@exclude_packages)
     }
     if (defined ($ENV{"UNEXCLUDE$disknum"})) {
-        my $excl_file = $ENV{"TASKDIR"} . "/" . $ENV{"UNEXCLUDE$disknum"};
-        print LOG "Adding unexcludes from $excl_file\n";
-        open (EXCLUDE_FILE, "< $excl_file") || die "Can't open unexclude file $excl_file: $!\n";
-        while (defined (my $excl_pkg = <EXCLUDE_FILE>)) {
-            chomp $excl_pkg;
-            push(@unexclude_packages, $excl_pkg);
-        }
-        close (EXCLUDE_FILE);
+	add_excludes_from_files($ENV{"UNEXCLUDE$disknum"}, "unexclude", \@unexclude_packages)
     }
+}
+
+sub add_excludes_from_files {
+    my $files_list = shift;
+    my $verb = shift;
+    my $listref = shift;
+
+    foreach my $entry (split(':', $files_list)) {
+	my $excl_file = $ENV{"TASKDIR"} . "/" . $entry;
+	parse_exclude_file($excl_file, $verb, $listref)
+    }
+}
+
+sub parse_exclude_file {
+    my $excl_file = shift;
+    my $verb = shift;
+    my $listref = shift;
+    my @list = @$listref;
+
+    print "  Adding packages to $verb list from $excl_file\n";
+    print LOG "Adding packages to $verb list from $excl_file\n";
+    open (EXCLUDE_FILE, "< $excl_file") || die "Can't open exclude file $excl_file: $!\n";
+    while (defined (my $excl_pkg = <EXCLUDE_FILE>)) {
+	chomp $excl_pkg;
+	push(@exclude_packages, $excl_pkg);
+	print LOG "  $excl_pkg\n";
+    }
+    close (EXCLUDE_FILE);
 }
 
 sub finish_disc {
@@ -879,12 +1000,9 @@ sub finish_disc {
 		if ($ok == 0) {
 			open(my $fh, ">>", "$cddir/.disk/base_installable");
 			close($fh);
-			print "  Found all files needed for debootstrap for all binary arches\n";
+			print "  Found all files needed for debootstrap and kernel for all binary arches\n";
 		} else {
-			print "  $ok files missing for debootstrap, not creating base_installable\n";
-			if ($disktype eq "BC") {
-				print "  This is expected - building a BC\n";
-			}
+			die "  $ok files missing for debootstrap and kernel, aborting!\n";
 		}
 	}
 
@@ -933,6 +1051,7 @@ sub finish_disc {
 		find (\&md5_files_for_md5sum, $dir);
 	    }
 	}
+
 	close(MD5LIST);
 
 	# And sort; it should make things faster for people checking
@@ -948,8 +1067,7 @@ sub finish_disc {
 		$error == 0 || die "DISC_END_HOOK failed with error $error\n";
 	}
 
-	$size = `$size_check $cddir`;
-	chomp $size;
+	$size = size_check($cddir, 0);
 	$bytes = $size * $blocksize;
 	print LOG "CD $disknum$not filled with $pkgs_this_cd packages, $size blocks, $bytes bytes\n";
 	print "  CD $disknum$not filled with $pkgs_this_cd packages, $size blocks, $bytes bytes\n";
@@ -1201,8 +1319,6 @@ sub add_firmware_stuff {
     local $_ = shift;
     my ($p, $file, $section, $component, $dep11_dir);
     my $blocks_added = 0;
-    my @args = ("$basedir/tools/generate_firmware_patterns",
-		"--output-dir", "$dir/firmware/dep11");
 
     m/^Package: (\S+)/m and $p = $1;
     m/^Section: (\S+)/m and $section = $1;
@@ -1250,16 +1366,21 @@ sub add_firmware_stuff {
 	$blocks_added -= get_file_blocks("$dir/firmware/dep11/$p.component");
     }
 
-    msg_ap(0, "(Maybe) generate fw pattern file $dir/firmware/dep11/$p.patterns\n");
-    push(@args, "--package", "$p");
-    push(@args, "$dep11_dir/Components-$arch.yml.gz");
-    system(@args) == 0 or die "generate_firmware_patterns failed: $?";
-    if (-f "$dir/firmware/dep11/$p.patterns") {
-	$blocks_added += get_file_blocks("$dir/firmware/dep11/$p.patterns");
-	# Make sure apt-setup can be configured appropriately:
-	write_file("$dir/firmware/dep11/$p.component", $component)
-	    or die "unable to create $dir/firmware/dep11/$p.component";
-	$blocks_added += get_file_blocks("$dir/firmware/dep11/$p.component");
+    # Do only if dep11 is enabled
+    if ($dep11) {
+	msg_ap(0, "(Maybe) generate fw pattern file $dir/firmware/dep11/$p.patterns\n");
+	my @args = ("$basedir/tools/generate_firmware_patterns",
+		    "--output-dir", "$dir/firmware/dep11");
+	push(@args, "--package", "$p");
+	push(@args, "$dep11_dir/Components-$arch.yml.gz");
+	system(@args) == 0 or die "generate_firmware_patterns failed: $?";
+	if (-f "$dir/firmware/dep11/$p.patterns") {
+	    $blocks_added += get_file_blocks("$dir/firmware/dep11/$p.patterns");
+	    # Make sure apt-setup can be configured appropriately:
+	    write_file("$dir/firmware/dep11/$p.component", $component)
+		or die "unable to create $dir/firmware/dep11/$p.component";
+	    $blocks_added += get_file_blocks("$dir/firmware/dep11/$p.component");
+	}
     }
 
     # Find the current size of the firmware Contents file
@@ -1294,7 +1415,7 @@ sub remove_Packages_entry {
     my $arch = shift;
     my $in_backports = shift;
     local $_ = shift;
-    my ($p, $file, $section, $pdir, $pkgfile, $tmp_pkgfile, $match, $gz,
+    my ($p, $file, $section, $pkgversion, $pdir, $pkgfile, $tmp_pkgfile, $match, $gz,
         $st1, $st2, $size1, $size2);
     my $blocks_removed = 0;
     my $old_blocks = 0;
@@ -1302,6 +1423,7 @@ sub remove_Packages_entry {
 
     m/^Package: (\S+)/m and $p = $1;
     m/^Section: (\S+)/m and $section = $1;
+    m/^Version: (\S+)/m and $pkgversion = $1;
 
     if ($arch eq "source") {
         m/^Directory: (\S+)/mi and $file = $1;
@@ -1334,10 +1456,18 @@ sub remove_Packages_entry {
 
     $/ = ''; # Browse by paragraph
     while (defined($match = <IFILE>)) {
-        if (! ($match =~ /^Package: \Q$p\E$/m)) {
-            print OFILE $match;
-            $gz->gzwrite($match) or die "Failed to write $pkgfile.gz: $gzerrno\n";
-        }
+	if ($arch eq "source") {
+	    # Have to handle source specially - multiple versions
+	    if ( ($match !~ /^Package: \Q$p\E$/m) or ($match !~ /^Version: \Q$pkgversion\E$/m)) {
+		print OFILE $match;
+		$gz->gzwrite($match) or die "Failed to write $pkgfile.gz: $gzerrno\n";
+	    }
+	} else {
+	    if ($match !~ /^Package: \Q$p\E$/m) {
+		print OFILE $match;
+		$gz->gzwrite($match) or die "Failed to write $pkgfile.gz: $gzerrno\n";
+	    }
+	}
     }
     $/ = $old_split; # Browse by line again
 
@@ -1544,6 +1674,17 @@ sub get_file_blocks {
     return size_in_blocks($st->size);
 }
 
+# Give us a consistent version string, unmangling as required
+sub fixup_pkgversion {
+    my $pkgversion = shift;
+
+    if (!defined $pkgversion or $pkgversion eq "") {
+	return "<DEFAULT>";
+    }
+    $pkgversion =~ s/\%/:/g;
+    return $pkgversion;
+}
+
 sub add_packages {
     my ($p, @files, $d, $realfile, $source, $section, $name, $pkgfile, $pdir);
     my $dir;
@@ -1563,15 +1704,16 @@ sub add_packages {
     }
 
     my $pkg = shift;
-    my ($arch, $component, $pkgname, $pkgsize) = split /:/, $pkg;
+    my ($arch, $component, $pkgname, $pkgsize, $pkgversion) = split /:/, $pkg;
+    $pkgversion = fixup_pkgversion ($pkgversion);
 
     if ("$arch" eq "" or "$pkgname" eq "" or "$pkgname" eq "") {
         die "inconsistent data passed to add_packages: $pkg\n";
     }
 
-    msg_ap(0, "Looking at $pkg: arch $arch, package $pkgname, rollback $rollback\n");
+    msg_ap(0, "Looking at $pkg: arch $arch, package $pkgname, pkgversion $pkgversion, rollback $rollback\n");
 
-    foreach my $package_info (@{$pkginfo{$arch}{$pkgname}}) {
+    foreach my $package_info (@{$pkginfo{$arch}{$pkgname}{$pkgversion}}) {
 	my $in_backports = 0;
 	if ($pkgname =~ /\/$codename-backports/) {
 	    $in_backports = 1;
@@ -1606,7 +1748,7 @@ sub add_packages {
                 $total_blocks -= remove_trans_desc_entry($dir, $arch, $in_backports, $package_info);
             }
 	    
-	    if ($firmware_package{$pkgname}) {
+	    if (!($arch eq "source") && $firmware_package{$pkgname}) {
 		$total_blocks -= remove_firmware_stuff($dir, $arch, $in_backports, $package_info);
 	    }
         
@@ -1627,15 +1769,26 @@ sub add_packages {
                 # Remove the link
                 unlink ("$dir/$file") || msg_ap(0, "Couldn't delete file $dir/$file\n");
                 msg_ap(0, "  Rollback: removed $dir/$file\n");
+
+		# Try to remove the leaf directory; will silently fail
+		# if there are still files there, which is OK.
+		my $thisdir = dirname("$dir/$file");
+		rmdir ($thisdir);
             }
-	    # Try to remove the directory; will silently fail if there
-	    # are still files there, which is OK.
-	    rmdir ($dir);
+
         } else {
-            $total_blocks += add_Packages_entry($dir, $arch, $in_backports, $package_info);
-            $total_blocks += add_md5_entry($dir, $arch, $in_backports, $package_info);
+	    my $new_blocks = add_Packages_entry($dir, $arch, $in_backports, $package_info);
+	    msg_ap(1, "    $new_blocks blocks for new Packages entry\n");
+            $total_blocks += $new_blocks;
+
+            $new_blocks = add_md5_entry($dir, $arch, $in_backports, $package_info);
+	    msg_ap(1, "    $new_blocks blocks for new md5 entry\n");
+            $total_blocks += $new_blocks;
+
             if (!($arch eq "source")) {
-                $total_blocks += add_trans_desc_entry($dir, $arch, $in_backports, $package_info);
+                $new_blocks = add_trans_desc_entry($dir, $arch, $in_backports, $package_info);
+		msg_ap(1, "    $new_blocks blocks for translated descriptions\n");
+                $total_blocks += $new_blocks;
             }
 
             foreach my $file (@files) {
@@ -1656,11 +1809,19 @@ sub add_packages {
                     # disc is full. ONLY do this if the file is not
                     # already linked in - consider binary-all packages
                     # on a multi-arch disc
-                    $total_blocks += get_file_blocks($realfile);
-                    $total_blocks += good_link ($realfile, "$dir/$file");
+                    $new_blocks = get_file_blocks($realfile);
+		    msg_ap(1, "    $new_blocks blocks for file $realfile\n");
+		    $total_blocks += $new_blocks;
+
+                    $new_blocks = good_link ($realfile, "$dir/$file");
+		    msg_ap(1, "    $new_blocks blocks for link\n");
+		    $total_blocks += $new_blocks;
+
                     msg_ap(0, "  Linked $dir/$file\n");
-                    if ($firmware_package{$pkgname}) {
-			$total_blocks += add_firmware_stuff($dir, $arch, $in_backports, $package_info);
+                    if (!($arch eq "source") && $firmware_package{$pkgname}) {
+			$new_blocks = add_firmware_stuff($dir, $arch, $in_backports, $package_info);
+			msg_ap(1, "    $new_blocks blocks for firmware stuff\n");
+			$total_blocks += $new_blocks;
                     }
                 } else {
                     msg_ap(0, "  $dir/$file already linked in\n");

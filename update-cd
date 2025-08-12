@@ -19,29 +19,26 @@ NONFREE=0
 NONFREE_FIRMWARE=1
 
 # What release version is this?
-VER=9.1.0
+VER=12.1.0
 
 # Is this an official CD?
 OFFICIAL=Official
 # OFFICIAL="Unofficial snapshot"
 
 # Path to use with mkisofs/mkhybrid
-MKISOFS="genisoimage -jigdo-template-compress bzip2 -r -checksum_algorithm_iso sha256,sha512"
+MKISOFS="xorriso -as mkisofs -jigdo-template-compress bzip2 -r -checksum_algorithm_iso md5,sha256,sha512"
 
 # Use JTE extensions to mkisofs to make jigdo files?
 JTE=1
 
-# Set up torrents too?
-BT=1
-
 # The working directory to use. MUST be on the same partition as the mirror.
-TDIR=/srv/cdbuilder.debian.org/src/deb-cd/tmp/stretch-update/cd-work
+TDIR=/srv/cdbuilder.debian.org/src/deb-cd/tmp/bookworm-update/cd-work
 
-# Building stretch cd set ...
-CODENAME=stretch
+# Building bookworm cd set ...
+CODENAME=bookworm
 
 # Path where the images will be written
-OUT=/srv/cdbuilder.debian.org/src/deb-cd/tmp/stretch-update/cd-out
+OUT=/srv/cdbuilder.debian.org/src/deb-cd/tmp/bookworm-update/cd-out
 
 # Location(s) for the snapshot(s)
 SNAPSHOT='Debian=https://us.cdimage.debian.org/cdimage/snapshot/Debian/ --try-last'
@@ -69,7 +66,7 @@ esac
 # Location of the diff file to use to determine the changes. If you leave
 # this blank, we'll try to determine the changes from the ChangeLog files,
 # which is probably less accurate. 
-DIFF=/home/debian-cd/lists/stretch/r0-r2.diff
+DIFF=/home/debian-cd/lists/bookworm/r0-r1.diff
 
 if [ "$TYPE" = "cd" ] ; then
     CDSIZE=644 # megabytes, leaving space for metadata
@@ -77,7 +74,6 @@ else
     CDSIZE=4300 # megabytes, leaving space for metadata
 fi
 
-REL=Debian"$VER"
 CLOG=dists/$CODENAME/ChangeLog
 UPD=$TDIR/$CODENAME-update
 DATE=`date +%Y%m%d`
@@ -93,7 +89,7 @@ CAPCODE=`perl -e "print ucfirst("$CODENAME")"`
 export FIRSTVER CAPCODE
 
 if [ "$ARCHLIST"x = ""x ] ; then
-    ARCHLIST="arm64 armel armhf amd64 i386 mips mipsel mips64el ppc64el s390x source" # amd64 # -all dealt with specially
+    ARCHLIST="arm64 armel armhf amd64 i386 loong64 mips mipsel mips64el ppc64el s390x source" # amd64 # -all dealt with specially
 fi
 
 export TDIR NONFREE NONFREE_FIRMWARE VER MIRROR CODENAME OUT BASEDIR
@@ -144,7 +140,6 @@ make_cd () {
     ISODIR=$OUT/$THISARCH/iso-$TYPE
     JIGDODIR=$OUT/$THISARCH/jigdo-$TYPE
     LISTDIR=$OUT/$THISARCH/list-$TYPE
-    BTDIR=$OUT/$THISARCH/bt-$TYPE
 
     if [ ! -d ${ISODIR} ] ; then
         mkdir -p ${ISODIR}
@@ -155,9 +150,6 @@ make_cd () {
     if [ ! -d ${LISTDIR} ] ; then
         mkdir -p ${LISTDIR}
     fi
-    if [ $BT = 1 ] && [ ! -d ${BTDIR} ] ; then
-        mkdir -p ${BTDIR}
-    fi
 
     if [ $JTE = 1 ] ; then
 	set +e
@@ -167,9 +159,9 @@ make_cd () {
             -jigdo-template ${JIGDODIR}/${BASENAME}.template \
             -jigdo-map Debian=$MIRROR/ \
             -jigdo-force-md5 /pool/ \
-            -checksum-list $UPD/checksum-check \
-            $UPD/CD$CDNUM 2>&1 | grep "extents written"
-#            $UPD/CD$CDNUM
+            -md5-list $UPD/checksum-check \
+            $UPD/CD$CDNUM
+#            $UPD/CD$CDNUM 2>&1 | grep "extents written"
 	if [ $? -ne 0 ] ; then
 	    echo "${MKISOFS} failed, error $?"
 	    exit 1
@@ -196,10 +188,6 @@ make_cd () {
             echo "$SHA  ${BASENAME}.iso" >> ${JIGDODIR}/SHA${SHA_SIZE}SUMS.update
             echo "$SHA  ${BASENAME}.iso" >> ${ISODIR}/SHA${SHA_SIZE}SUMS.update
             (cd ${JIGDODIR} && sha${SHA_SIZE}sum ${BASENAME}.jigdo ${BASENAME}.template >> SHA${SHA_SIZE}SUMS.update)
-            if [ $BT = 1 ]; then
-                echo "$SHA  ${BASENAME}.iso" >> ${BTDIR}/SHA${SHA_SIZE}SUMS.update
-                (cd ${BTDIR} && sha${SHA_SIZE}sum ${BASENAME}.iso.torrent >> SHA${SHA_SIZE}SUMS.update)
-            fi
         done
 
         # Make sure that the ISO is as new/newer than the jigdo file; #587774

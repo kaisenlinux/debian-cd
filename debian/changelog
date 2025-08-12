@@ -1,3 +1,81 @@
+debian-cd (3.2.2-1kaisen) kaisen-packages; urgency=medium
+
+  * Import new upstream release
+  * Update the quilt patch
+
+ -- Kevin Chevreuil - Kaisen <kaisen@kaisenlinux.org>  Sun, 10 Aug 2025 02:34:47 +0200
+
+debian-cd (3.2.2) unstable; urgency=medium
+
+  [ Steve McIntyre ]
+  * Start development for trixie
+  * Remove old config and data for jessie and stretch
+  * Add a way to exclude named firmware packages from media, so we can
+    control which packages are included - see
+    tasks/$codename/firmware-exclude. Closes: #1032071
+  * Tweak sizes slightly for BD media.
+  * Look for firmware in /usr/lib/firmware as well as /lib/firmware.
+    Closes: #1059858
+  * Fix counting of images at build time. Closes: #1063858
+  * make_disc_trees.pl: if files will not fit on media, fail loudly
+    rather than sitting in a loop forever. Fail properly in #1069682.
+  * Add initial support for making riscv64 images
+  * Cope with package name changes in udeb packages. Closes: #1084789.
+  * Check that the first image has a linux-image-* package included,
+    and abort if not.
+  * tools/generate_di+k_list: Add explicit config to force tasksel and
+    tasksel-data onto image 1
+  * Multiple cleanups in make_disc_trees.pl:
+    + Tweaks to logging
+    + Reduce warnings
+  * Multiple fixes for sources handling:
+    + fix calls to apt-cache showsrc to ensure we get the correct
+      source packages
+    + Cope better with including multiple versions of source packages
+  * Improved base package handling in tools/generate_di+k_list:
+    + Factor out initial, busybox and zstd - all arches should have
+      these.
+    + For all arches, add bootloaders before the kernel image. This
+      will more consistently succeed/fail in edge cases for sizing -
+      we already check if we have a kernel included in the first image
+      in make_disc_trees.pl.
+  * Tweak how we including and excluding firmware packages
+    + Make trixie armhf netinst fit again.
+
+  [ Aurelien Jarno ]
+  * Add support for UEFI booting on riscv64
+
+  [ Guido Berhoerster ]
+  * Update DebianEdu installer banner and syslinux splash image
+    for bookworm
+
+  [ Samuel Thibault ]
+  * Add hurd-amd64 case.
+
+  [ Arnaud Rebillout ]
+  * Don't generate fw pattern file if DEP11 is set to 0
+  * Support a fonts directory, and make *.pf2 optional
+
+  [ dandan zhang ]
+  * Add basic support for loongarch64
+
+  [ Helge Deller ]
+  * Dropped smp part of 64-bit hppa kernel
+
+  [ Wolfgang Schweer ]
+  * Update Debian-edu-full task file. (Closes: #1079261)
+
+  [ Cyril Brulebois ]
+  * Various firmware support updates:
+    + Record firmware packages embedded in the modified initrds - see
+      #1106005
+    + Fix sound firmware inclusion logic for initrd
+    + Add firmware-intel-sound alongside firmware-sof-signed
+    + Add support for firmware-intel-sound patterns
+  * Make sure systemd-cryptsetup is available - see #1092977
+
+ -- Steve McIntyre <93sam@debian.org>  Mon, 12 Jun 2023 08:36:50 +0100
+
 debian-cd (3.2.1-1kaisen) kaisen-packages; urgency=medium
 
   * Use a quilt package instead of native package

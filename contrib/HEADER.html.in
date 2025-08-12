@@ -260,7 +260,7 @@ cpp.
 
 #endif
 
-#if !defined(ONEonly) && !defined(FIRMWARE) && (defined(STYLEbt) || defined(STYLEiso))
+#if !defined(ONEonly) && (defined(STYLEbt) || defined(STYLEiso))
 
   <h2>Only the first few images are available! Where are the rest?</h2>
 
@@ -272,31 +272,14 @@ cpp.
 
 #endif
 
-#ifdef FIRMWARE
-
   <h2>Non-free Firmware</h2>
 
-  <p>For convenience for some users, this <strong>unofficial</strong>
-  alternative build
-  includes <a href="https://wiki.debian.org/Firmware">non-free
-  firmware</a> for extra support for some awkward hardware.</p>
-
-#endif
-
-#ifdef ARCH_HAS_FIRMWARE
-
-  <h2>Non-free Firmware</h2>
-
-  <p>This is an <strong>official</strong> Debian image build and so
-  only includes Free Software.</p>
-
-  <p>For convenience for some users, there is an
-  alternative <strong>unofficial</strong> netinst CD build which
-  includes <a href="https://wiki.debian.org/Firmware">non-free
-  firmware</a> for extra support for some awkward hardware. Look under
-  <a href="/cdimage/unofficial/non-free/cd-including-firmware/">/cdimage/unofficial/non-free/cd-including-firmware/</a>
-  if you need that CD image instead.</p>
-#endif
+  <p>This Debian image build only includes Free Software where
+  possible. However, many systems include hardware which depends on
+  non-free firmware to function properly so this build also includes
+  those firmware files for those cases. See the Debian
+  Wiki <a href="https://wiki.debian.org/Firmware">non-free
+  firmware</a> page for more information.
 
 <h2>Other questions?</h2>
 

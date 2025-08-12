@@ -213,12 +213,8 @@ export JIGDO_CHECKSUM="md5"
 # export MKISOFS_OPTS="-r"		#For normal users
 # export MKISOFS_OPTS="-r -F ."	#For symlink farmers
 
-# Override for i386 and amd64 to use xorriso instead of
-# mkisofs/genisoimage. Allows creation of isohybrid images: ISO images
-# that will burn correctly onto a CD and also can be written raw to a
-# USB stick. xorriso 0.6.5 and later has working support for this.
-#export i386_MKISOFS="xorriso"
-#export i386_MKISOFS_OPTS="-as mkisofs -r -checksum_algorithm_iso sha256,sha512"
+# *Optionally* override things here for your arch if you need special
+# handling here.
 #export amd64_MKISOFS="xorriso"
 #export amd64_MKISOFS_OPTS="-as mkisofs -r -checksum_algorithm_iso sha256,sha512"
 
